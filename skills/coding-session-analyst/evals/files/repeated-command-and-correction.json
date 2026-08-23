@@ -1,0 +1,140 @@
+{
+  "session": {
+    "id": "fixture-repeated-command-and-correction",
+    "repo": "acme/payments",
+    "status": "completed"
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "sequence": 1,
+      "occurred_at": "2026-08-23T10:00:00Z",
+      "type": "user_message",
+      "message": "Add the account endpoint using the existing requireUser helper, and run the targeted account tests.",
+      "usage": {"total_tokens": 40}
+    },
+    {
+      "id": "evt-002",
+      "sequence": 2,
+      "occurred_at": "2026-08-23T10:00:15Z",
+      "type": "assistant_message",
+      "message": "I will inspect the route and tests first.",
+      "usage": {"total_tokens": 180}
+    },
+    {
+      "id": "evt-003",
+      "sequence": 3,
+      "occurred_at": "2026-08-23T10:00:40Z",
+      "type": "tool_result",
+      "tool": "shell",
+      "command": "npm test account",
+      "exit_code": 1,
+      "output": "npm error Missing script: test",
+      "usage": {"total_tokens": 310}
+    },
+    {
+      "id": "evt-004",
+      "sequence": 4,
+      "occurred_at": "2026-08-23T10:01:00Z",
+      "type": "assistant_message",
+      "message": "The command may need to run from the package directory, so I will retry it.",
+      "usage": {"total_tokens": 190}
+    },
+    {
+      "id": "evt-005",
+      "sequence": 5,
+      "occurred_at": "2026-08-23T10:01:25Z",
+      "type": "tool_result",
+      "tool": "shell",
+      "command": "npm test account",
+      "exit_code": 1,
+      "output": "npm error Missing script: test",
+      "usage": {"total_tokens": 290}
+    },
+    {
+      "id": "evt-006",
+      "sequence": 6,
+      "occurred_at": "2026-08-23T10:01:55Z",
+      "type": "tool_result",
+      "tool": "shell",
+      "command": "npm test account",
+      "exit_code": 1,
+      "output": "npm error Missing script: test",
+      "usage": {"total_tokens": 275}
+    },
+    {
+      "id": "evt-007",
+      "sequence": 7,
+      "occurred_at": "2026-08-23T10:02:20Z",
+      "type": "tool_result",
+      "tool": "read",
+      "path": "package.json",
+      "output": "Scripts include test:account",
+      "usage": {"total_tokens": 150}
+    },
+    {
+      "id": "evt-008",
+      "sequence": 8,
+      "occurred_at": "2026-08-23T10:02:45Z",
+      "type": "tool_result",
+      "tool": "shell",
+      "command": "npm run test:account",
+      "exit_code": 0,
+      "output": "12 passed",
+      "usage": {"total_tokens": 220}
+    },
+    {
+      "id": "evt-009",
+      "sequence": 9,
+      "occurred_at": "2026-08-23T10:04:00Z",
+      "type": "edit",
+      "path": "src/routes/account.ts",
+      "summary": "Added custom bearer-token parsing instead of using requireUser.",
+      "usage": {"total_tokens": 680}
+    },
+    {
+      "id": "evt-010",
+      "sequence": 10,
+      "occurred_at": "2026-08-23T10:05:00Z",
+      "type": "assistant_message",
+      "message": "The endpoint now validates the bearer token directly.",
+      "usage": {"total_tokens": 210}
+    },
+    {
+      "id": "evt-011",
+      "sequence": 11,
+      "occurred_at": "2026-08-23T10:05:30Z",
+      "type": "user_message",
+      "message": "No. I explicitly said to use the existing requireUser helper. Do not add another authentication path.",
+      "usage": {"total_tokens": 45}
+    },
+    {
+      "id": "evt-012",
+      "sequence": 12,
+      "occurred_at": "2026-08-23T10:06:30Z",
+      "type": "edit",
+      "path": "src/routes/account.ts",
+      "summary": "Removed custom parsing and replaced it with requireUser.",
+      "usage": {"total_tokens": 520}
+    },
+    {
+      "id": "evt-013",
+      "sequence": 13,
+      "occurred_at": "2026-08-23T10:07:00Z",
+      "type": "tool_result",
+      "tool": "shell",
+      "command": "npm run test:account",
+      "exit_code": 0,
+      "output": "13 passed",
+      "usage": {"total_tokens": 235}
+    },
+    {
+      "id": "evt-014",
+      "sequence": 14,
+      "occurred_at": "2026-08-23T10:07:20Z",
+      "type": "assistant_message",
+      "message": "Implemented the endpoint with requireUser and verified 13 targeted tests pass.",
+      "usage": {"total_tokens": 170}
+    }
+  ]
+}

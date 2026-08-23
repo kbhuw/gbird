@@ -1,0 +1,1495 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>gbird</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --background: #fdfdfc;
+        --foreground: #111111;
+        --muted: #6f6f69;
+        --faint: #94948d;
+        --rule: #d8d8d1;
+        --hover: #f7f7f4;
+        --danger: #c83232;
+        --event-model: #77717e;
+        --event-code: #536f7b;
+        --event-review: #756a79;
+        --event-check: #846f49;
+        --event-merge: #3f7852;
+        --event-you: #2867d6;
+        --status-open: #9a6700;
+        --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { min-height: 100%; }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: var(--sans);
+        font-size: 16px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      body.modal-open { overflow: hidden; }
+      button, input, a { color: inherit; font: inherit; }
+      button { cursor: pointer; }
+      [hidden] { display: none !important; }
+
+      button:focus-visible,
+      input:focus-visible,
+      a:focus-visible {
+        outline: 1px solid var(--foreground);
+        outline-offset: 3px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      .shell {
+        width: 100%;
+        max-width: 672px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      .page-header { padding-top: 64px; }
+
+      .eyebrow-row,
+      .footer-row,
+      .dialog-top,
+      .event-heading,
+      .dialog-links {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .eyebrow,
+      .meta,
+      .table-head,
+      .session-status,
+      .result-count,
+      .footer-row,
+      .dialog-close,
+      .dialog-link,
+      .event-meta,
+      .event-status,
+      .connection-line,
+      .sync-button,
+      .filter-button,
+      .filter-trigger,
+      .event-data {
+        font-family: var(--mono);
+      }
+
+      .eyebrow {
+        margin: 0;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.5;
+        letter-spacing: .26em;
+        text-transform: uppercase;
+      }
+
+      .sync-button,
+      .filter-button,
+      .dialog-close,
+      .show-session {
+        border: 0;
+        background: transparent;
+      }
+
+      .sync-button {
+        min-width: 44px;
+        min-height: 44px;
+        margin: -14px -12px -14px 0;
+        padding: 12px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .sync-button:hover:not([disabled]) { color: var(--foreground); }
+      .sync-button[disabled] { cursor: default; opacity: .5; }
+
+      h1 {
+        margin: 12px 0 0;
+        font-size: 26px;
+        font-weight: 500;
+        letter-spacing: -.025em;
+        line-height: 1.25;
+      }
+
+      main { padding-top: 48px; }
+
+      .search {
+        display: block;
+        width: 100%;
+        height: 37px;
+        padding: 8px 0;
+        border: 0;
+        border-bottom: 1px solid var(--rule);
+        border-radius: 0;
+        background: transparent;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 20px;
+        transition: border-color 140ms ease;
+      }
+
+      .search::placeholder { color: var(--faint); }
+      .search:focus { border-bottom-color: var(--muted); outline: 0; }
+      .search:focus-visible { outline: 0; }
+
+      .filters {
+        position: relative;
+        width: max-content;
+        margin: 22px 0 0;
+      }
+
+      .filter-menu { position: relative; }
+
+      .filter-trigger {
+        display: flex;
+        min-height: 32px;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 9px;
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--foreground);
+        font-size: 11px;
+        list-style: none;
+        user-select: none;
+      }
+
+      .filter-trigger::-webkit-details-marker { display: none; }
+      .filter-trigger::before { content: "≡"; font-size: 13px; transform: rotate(90deg); }
+      .filter-trigger:hover { border-color: var(--muted); }
+
+      .filter-options {
+        position: absolute;
+        z-index: 10;
+        top: calc(100% + 7px);
+        left: 0;
+        min-width: 180px;
+        padding: 6px;
+        border: 1px solid var(--rule);
+        background: var(--background);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+      }
+
+      .filter-section-label {
+        margin: 5px 8px 3px;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 8px;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+      }
+
+      .filter-divider {
+        height: 1px;
+        margin: 6px 0;
+        background: var(--rule);
+      }
+
+      .filter-button {
+        display: block;
+        width: 100%;
+        min-height: 30px;
+        padding: 6px 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 18px;
+        text-align: left;
+        white-space: nowrap;
+        transition: color 120ms ease;
+      }
+
+      .filter-button:hover,
+      .filter-button[aria-pressed="true"] { background: var(--hover); color: var(--foreground); }
+
+      .session-table { margin-top: 30px; }
+
+      .table-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 82px 92px;
+        align-items: center;
+        column-gap: 18px;
+      }
+
+      .table-head {
+        min-height: 27px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--rule);
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.5;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+
+      .session-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .session-item {
+        min-height: 54px;
+        border-bottom: 1px solid var(--rule);
+      }
+
+      .show-session {
+        width: 100%;
+        min-height: 53px;
+        padding: 0;
+        text-align: left;
+      }
+
+      .show-session:hover { background: var(--hover); }
+
+      .session-identity { min-width: 0; padding: 7px 0; }
+
+      .session-title {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 20px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .session-repo {
+        display: block;
+        min-width: 0;
+        margin-top: 1px;
+        overflow: hidden;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 9px;
+        line-height: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .session-status {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 18px;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .session-date {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .session-status[data-status="merged"] { color: var(--event-merge); }
+      .session-status[data-status="completed"] { color: var(--event-merge); }
+      .session-status[data-status="open"] { color: var(--status-open); }
+      .session-status[data-status="active"] { color: var(--status-open); }
+      .session-status[data-status="suspended"],
+      .session-status[data-status="closed"],
+      .session-status[data-status="aborted"],
+      .session-status[data-status="failure"],
+      .session-status[data-status="failed"] { color: var(--danger); }
+
+      .empty {
+        padding: 36px 0;
+        border-bottom: 1px solid var(--rule);
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .result-count {
+        margin: 15px 0 0;
+        color: var(--faint);
+        font-size: 11px;
+      }
+
+      footer { margin-top: 80px; padding-bottom: 40px; }
+
+      .footer-row {
+        min-height: 52px;
+        padding-top: 18px;
+        border-top: 1px solid var(--rule);
+        color: var(--faint);
+        font-size: 9px;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+      }
+
+      .dialog-layer {
+        position: fixed;
+        z-index: 50;
+        inset: 0;
+        overflow-y: auto;
+        background: rgba(253, 253, 252, .76);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+
+      .dialog {
+        position: relative;
+        width: calc(100% - 40px);
+        max-width: 760px;
+        max-height: 78vh;
+        margin: 11vh auto 48px;
+        overflow: hidden;
+        border: 1px solid var(--rule);
+        background: var(--background);
+      }
+
+      .dialog-inner { padding: 28px 32px 0; }
+      .dialog-top { align-items: flex-start; }
+
+      .dialog-actions { display: flex; align-items: center; gap: 5px; }
+
+      .dialog-close,
+      .dialog-link {
+        min-height: 44px;
+        margin-top: -13px;
+        padding: 12px;
+        color: var(--muted);
+        font-size: 11px;
+        text-decoration: none;
+      }
+
+      .dialog-close { margin-right: -12px; }
+      .dialog-close:hover, .dialog-link:hover { color: var(--foreground); }
+
+      h2 {
+        margin: 12px 0 0;
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: -.02em;
+        line-height: 1.4;
+      }
+
+      .dialog-summary {
+        margin: 8px 0 16px;
+        color: #3f3f3b;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .dialog-links {
+        justify-content: flex-start;
+        margin-bottom: 18px;
+        gap: 14px;
+      }
+
+      .dialog-links a {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10px;
+        text-decoration: none;
+      }
+
+      .dialog-links a:hover { color: var(--foreground); }
+
+      .event-list {
+        max-height: calc(78vh - 230px);
+        margin: 0 -32px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+
+      .timeline-scroll {
+        position: sticky;
+        z-index: 2;
+        top: 0;
+        padding: 22px 32px 20px;
+        overflow-x: auto;
+        border-top: 1px solid var(--rule);
+        border-bottom: 1px solid var(--rule);
+        background: var(--background);
+        overscroll-behavior-x: contain;
+      }
+
+      .timeline-track {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 128px;
+        align-items: start;
+        width: max-content;
+        min-width: 100%;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .timeline-step {
+        position: relative;
+        min-width: 0;
+      }
+
+      .timeline-step::before {
+        position: absolute;
+        top: 22px;
+        right: 0;
+        left: 0;
+        height: 1px;
+        background: var(--rule);
+        content: "";
+      }
+
+      .timeline-step:first-child::before { left: 50%; }
+      .timeline-step:last-child::before { right: 50%; }
+
+      .timeline-node {
+        --event-color: var(--faint);
+        position: relative;
+        z-index: 1;
+        display: grid;
+        width: 100%;
+        min-height: 96px;
+        justify-items: center;
+        padding: 0 8px;
+        border: 0;
+        background: transparent;
+        text-align: center;
+      }
+
+      .timeline-mark {
+        position: relative;
+        display: grid;
+        width: 26px;
+        height: 26px;
+        margin-top: 9px;
+        place-items: center;
+        border: 1px solid #bdbdb6;
+        border-radius: 7px;
+        background: var(--background);
+        box-shadow: 0 0 0 6px var(--background);
+        color: var(--foreground);
+        font-family: var(--sans);
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1;
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+      }
+
+      .timeline-mark img {
+        display: block;
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+      }
+
+      .timeline-mark-fallback { display: none; }
+      .timeline-mark.logo-failed img { display: none; }
+      .timeline-mark.logo-failed .timeline-mark-fallback { display: block; }
+
+      .timeline-node[data-tone="you"] { --event-color: var(--event-you); }
+      .timeline-node[data-tone="model"] { --event-color: var(--event-model); }
+      .timeline-node[data-tone="code"] { --event-color: var(--event-code); }
+      .timeline-node[data-tone="review"] { --event-color: var(--event-review); }
+      .timeline-node[data-tone="check"] { --event-color: var(--event-check); }
+      .timeline-node[data-tone="merge"] { --event-color: var(--event-merge); }
+      .timeline-node[data-tone="failure"] { --event-color: var(--danger); }
+
+      .timeline-node[aria-pressed="true"] .timeline-mark {
+        border-color: var(--event-color);
+        box-shadow: 0 0 0 5px var(--background), 0 0 0 6px var(--event-color);
+      }
+
+      .timeline-node[data-tone="failure"] .timeline-mark { border-color: var(--danger); }
+
+      .timeline-mark[data-actor="you"] {
+        border-color: var(--event-you);
+        border-radius: 50%;
+        background: var(--event-you);
+        color: #ffffff;
+        font-size: 11px;
+      }
+
+      .timeline-mark[data-actor="start"] {
+        border-color: transparent;
+        border-radius: 50%;
+        font-size: 24px;
+        font-weight: 400;
+      }
+
+      .timeline-mark[data-actor="merge"] {
+        width: 18px;
+        height: 18px;
+        margin-top: 13px;
+        border-color: var(--event-merge);
+        border-radius: 50%;
+        background: var(--event-merge);
+      }
+
+      .timeline-mark[data-actor="vercel"] {
+        border-color: #a9a9a3;
+        border-radius: 50%;
+        font-size: 15px;
+      }
+
+      .timeline-mark[data-actor="github"],
+      .timeline-mark[data-actor="commit"],
+      .timeline-mark[data-actor="pr-opened"],
+      .timeline-mark[data-actor="pr-comment"],
+      .timeline-mark[data-actor="pr-review"],
+      .timeline-mark[data-actor="pr-closed"],
+      .timeline-mark[data-actor="ci"],
+      .timeline-mark[data-actor="system"] {
+        border-radius: 50%;
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 600;
+      }
+
+      .timeline-mark[data-actor="commit"] {
+        width: 20px;
+        height: 20px;
+        margin-top: 12px;
+        border-color: var(--foreground);
+        background: var(--foreground);
+        color: var(--background);
+      }
+
+      .timeline-mark[data-actor="pr-opened"] { font-size: 16px; }
+
+      .timeline-mark[data-actor="pr-comment"] {
+        border-radius: 8px 8px 8px 2px;
+        font-size: 13px;
+        letter-spacing: -1px;
+      }
+
+      .timeline-mark[data-actor="pr-review"] {
+        border-style: double;
+        font-size: 13px;
+      }
+
+      .timeline-mark[data-actor="pr-closed"] {
+        border-color: var(--danger);
+        color: var(--danger);
+        font-size: 15px;
+      }
+
+      .timeline-mark[data-actor="openai"] {
+        border-color: var(--foreground);
+        border-radius: 50%;
+        background: var(--foreground);
+        color: var(--background);
+        font-size: 15px;
+      }
+
+      .timeline-mark[data-actor="shell"],
+      .timeline-mark[data-actor="code-change"],
+      .timeline-mark[data-actor="web"],
+      .timeline-mark[data-actor="browser"],
+      .timeline-mark[data-actor="agent-tool"],
+      .timeline-mark[data-actor="tool"] {
+        border-radius: 6px;
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .timeline-mark[data-actor="turn-complete"] {
+        width: 18px;
+        height: 18px;
+        margin-top: 13px;
+        border-color: var(--event-merge);
+        border-radius: 50%;
+        background: var(--event-merge);
+        color: #ffffff;
+        font-size: 10px;
+      }
+
+      .timeline-mark[data-actor="turn-aborted"] {
+        border-color: var(--danger);
+        border-radius: 50%;
+        color: var(--danger);
+        font-size: 14px;
+      }
+
+      .timeline-mark[data-actor="turn-start"],
+      .timeline-mark[data-actor="compacted"] {
+        border-radius: 50%;
+        font-size: 13px;
+      }
+
+      .timeline-node-meta { font-family: var(--mono); }
+
+      .timeline-node-meta {
+        margin-top: 9px;
+        color: var(--muted);
+        font-size: 8px;
+        line-height: 1.4;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .timeline-node-title {
+        display: -webkit-box;
+        margin-top: 4px;
+        overflow: hidden;
+        color: #4c4c48;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .timeline-node:hover .timeline-node-title,
+      .timeline-node[aria-pressed="true"] .timeline-node-title {
+        color: var(--foreground);
+      }
+
+      .event-detail {
+        min-height: 188px;
+        padding: 22px 32px 30px;
+      }
+
+      .event-detail-kicker {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+      }
+
+      .event-detail-empty {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .event-json { margin-top: 14px; }
+
+      .event-json summary {
+        width: max-content;
+        color: var(--muted);
+        cursor: pointer;
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: .04em;
+      }
+
+      .event-json summary:hover { color: var(--foreground); }
+
+      .event-json .event-data { max-height: 230px; overflow: auto; }
+
+      .event-heading {
+        padding: 0;
+      }
+
+      .event-heading { align-items: baseline; }
+
+      .event-title {
+        min-width: 0;
+        margin: 0;
+        overflow-wrap: anywhere;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.5;
+      }
+
+      .event-status {
+        flex: none;
+        color: var(--muted);
+        font-size: 9px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .event-status[data-tone="failure"] { color: var(--danger); }
+      .event-status[data-tone="merge"] { color: var(--event-merge); }
+      .event-status[data-tone="code"] { color: var(--event-code); }
+      .event-status[data-tone="review"] { color: var(--event-review); }
+      .event-status[data-tone="check"] { color: var(--event-check); }
+
+      .event-meta {
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 9px;
+        line-height: 1.65;
+        overflow-wrap: anywhere;
+      }
+
+      .event-data {
+        margin: 10px 0 0;
+        padding: 10px 12px;
+        max-height: 260px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+        background: var(--hover);
+        color: #3f3f3b;
+        font-size: 10px;
+        line-height: 1.55;
+      }
+
+      .dialog-error {
+        padding: 20px 0 32px;
+        border-top: 1px solid var(--rule);
+        color: var(--danger);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      @media (max-width: 620px) {
+        .page-header { padding-top: 42px; }
+        h1 { font-size: 22px; }
+        main { padding-top: 40px; }
+        .table-grid { grid-template-columns: minmax(0, 1fr) 64px 76px; column-gap: 10px; }
+        .dialog { width: calc(100% - 24px); max-height: 88vh; margin-top: 6vh; }
+        .dialog-inner { padding: 24px 20px 0; }
+        .event-list {
+          max-height: calc(88vh - 220px);
+          margin-right: -20px;
+          margin-left: -20px;
+        }
+        .timeline-scroll { padding-right: 20px; padding-left: 20px; }
+        .timeline-track { grid-auto-columns: 112px; }
+        .event-detail { padding-right: 20px; padding-left: 20px; }
+        footer { margin-top: 64px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { scroll-behavior: auto !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="page-shell">
+      <header class="shell page-header">
+        <div class="eyebrow-row">
+          <p class="eyebrow">catches slugs</p>
+          <button class="sync-button" id="sync" type="button">Sync</button>
+        </div>
+        <h1>gbird</h1>
+      </header>
+
+      <main class="shell">
+        <label class="sr-only" for="search">Search sessions</label>
+        <input class="search" id="search" type="search" placeholder="Search sessions" autocomplete="off" />
+
+        <div class="filters" id="repos" role="group" aria-label="Filters">
+          <span class="meta">Loading repositories…</span>
+        </div>
+
+        <section class="session-table" aria-labelledby="session-list-title">
+          <h2 class="sr-only" id="session-list-title">Sessions</h2>
+          <div class="table-grid table-head" aria-hidden="true">
+            <span>Session</span>
+            <span>Date</span>
+            <span>Status</span>
+          </div>
+          <ul class="session-list" id="sessions" aria-live="polite"></ul>
+          <p class="result-count" id="result-count" role="status">Loading sessions…</p>
+        </section>
+      </main>
+
+      <footer class="shell">
+        <div class="footer-row">
+          <span>© 2026</span>
+          <span>Repo filtered</span>
+        </div>
+      </footer>
+    </div>
+
+    <div class="dialog-layer" id="dialog-layer" hidden>
+      <section
+        class="dialog"
+        id="session-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+        aria-describedby="dialog-summary"
+      >
+        <div class="dialog-inner">
+          <div class="dialog-top">
+            <p class="eyebrow" id="dialog-kicker">Session</p>
+            <div class="dialog-actions">
+              <a class="dialog-link" id="download-json" href="#" download>JSON</a>
+              <button class="dialog-close" id="dialog-close" type="button">Close</button>
+            </div>
+          </div>
+          <h2 id="dialog-title">Session</h2>
+          <p class="dialog-summary" id="dialog-summary">Loading…</p>
+          <div class="dialog-links" id="dialog-links"></div>
+          <div class="event-list" id="events"></div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const state = {
+        agent: "",
+        repo: "",
+        query: "",
+        app: null,
+        repos: [],
+        sessions: [],
+        timeline: null,
+        selectedEventIndex: 0,
+        trigger: null,
+        request: 0,
+      };
+
+      function el(tag, props, children) {
+        const node = document.createElement(tag);
+        for (const [key, value] of Object.entries(props || {})) {
+          if (key === "class") node.className = value;
+          else if (key === "text") node.textContent = value;
+          else if (key.startsWith("on") && typeof value === "function") {
+            node.addEventListener(key.slice(2).toLowerCase(), value);
+          } else if (value !== null && value !== undefined) node.setAttribute(key, value);
+        }
+        for (const child of children || []) if (child) node.append(child);
+        return node;
+      }
+
+      async function api(path, options) {
+        const request = options || {};
+        const response = await fetch(path, {
+          ...request,
+          headers: request.body ? { "content-type": "application/json" } : undefined,
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || response.status + " " + path);
+        return body;
+      }
+
+      const plural = (count, noun) => count.toLocaleString() + " " + noun + (count === 1 ? "" : "s");
+
+      function shortRepo(repo) {
+        return repo ? repo.split("/").pop() : "Unlinked";
+      }
+
+      function dateText(value) {
+        const date = new Date(value);
+        return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      }
+
+      function fullDateText(value) {
+        return new Date(value).toLocaleString(undefined, {
+          month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+        });
+      }
+
+      function displayStatus(session) {
+        const pull = session.pullRequests.find((candidate) => candidate.repo === state.repo)
+          || session.pullRequests[0];
+        return pull?.state || session.status || "unknown";
+      }
+
+      function visibleSessions() {
+        const query = state.query.trim().toLowerCase();
+        return query
+          ? state.sessions.filter((session) =>
+              session.title.toLowerCase().includes(query)
+              || (session.prompt || "").toLowerCase().includes(query))
+          : state.sessions;
+      }
+
+      function renderConnection() {
+        if (!state.app) return;
+        const configured = state.agent === "codex"
+          ? state.app.codexConfigured
+          : state.agent === "devin"
+            ? state.app.configured
+            : state.app.codexConfigured || state.app.configured;
+        $("sync").disabled = !configured || state.app.syncing;
+        $("sync").textContent = state.app.syncing ? "Syncing…" : "Sync";
+      }
+
+      function renderRepos() {
+        const options = [{ repo: "", sessionCount: state.sessions.length }, ...state.repos];
+        const activeFilters = [
+          state.agent ? (state.agent === "devin" ? "Devin" : "Codex") : "",
+          state.repo ? shortRepo(state.repo) : "",
+        ].filter(Boolean);
+        const menu = el("details", { class: "filter-menu" }, [
+          el("summary", {
+            class: "filter-trigger",
+            text: activeFilters.length ? "Filter · " + activeFilters.join(" · ") : "Filter",
+          }),
+          el("div", { class: "filter-options", role: "group", "aria-label": "Session filters" }, [
+            el("p", { class: "filter-section-label", text: "Agent" }),
+            ...[
+              { value: "", label: "All agents" },
+              { value: "devin", label: "Devin" },
+              { value: "codex", label: "Codex" },
+            ].map((option) => el("button", {
+              class: "filter-button",
+              type: "button",
+              "aria-pressed": String(state.agent === option.value),
+              text: option.label,
+              onclick: async () => {
+                menu.open = false;
+                if (state.agent === option.value) return;
+                closeDialog();
+                state.agent = option.value;
+                state.repo = "";
+                renderConnection();
+                await loadAgentData();
+              },
+            })),
+            el("div", { class: "filter-divider", "aria-hidden": "true" }),
+            el("p", { class: "filter-section-label", text: "Repository" }),
+            ...options.map((option) => el("button", {
+              class: "filter-button",
+              type: "button",
+              "aria-pressed": String(state.repo === option.repo),
+              text: option.repo ? shortRepo(option.repo) : "All repos",
+              title: option.repo || "All repositories",
+              onclick: async () => {
+                menu.open = false;
+                if (state.repo === option.repo) return;
+                closeDialog();
+                state.repo = option.repo;
+                renderRepos();
+                await loadSessions();
+              },
+            })),
+          ]),
+        ]);
+        $("repos").replaceChildren(menu);
+      }
+
+      function renderSessions() {
+        const sessions = visibleSessions();
+        if (!sessions.length) {
+          const configured = state.agent === "codex"
+            ? state.app?.codexConfigured
+            : state.agent === "devin"
+              ? state.app?.configured
+              : state.app?.codexConfigured || state.app?.configured;
+          $("sessions").replaceChildren(el("li", {
+            class: "empty",
+            text: configured ? "No matching sessions. Press Sync to import them." : (state.agent || "Agent sources") + " is not available.",
+          }));
+        } else {
+          $("sessions").replaceChildren(...sessions.map((session) => {
+            const repo = state.repo || session.repositories[0] || "";
+            const status = displayStatus(session);
+            return el("li", { class: "session-item" }, [
+              el("button", {
+                class: "show-session table-grid",
+                type: "button",
+                "aria-haspopup": "dialog",
+                "aria-controls": "session-dialog",
+                "aria-label": session.title + ", " + dateText(session.startedAt) + ", " + status,
+                onclick: (event) => openSession(session.id, event.currentTarget),
+              }, [
+                  el("span", { class: "session-identity" }, [
+                    el("span", { class: "session-title", text: session.title }),
+                  el("span", { class: "session-repo", text: repo || "unlinked" }),
+                ]),
+                el("span", { class: "session-date", text: dateText(session.startedAt) }),
+                el("span", {
+                  class: "session-status",
+                  "data-status": status.toLowerCase(),
+                  title: session.agent === "codex"
+                    ? ({
+                        active: "Codex is currently working in this task.",
+                        completed: "The latest Codex turn completed.",
+                        aborted: "The latest Codex turn was interrupted.",
+                      })[status] || status
+                    : status === "suspended"
+                      ? "Devin is no longer actively running this session. This is not necessarily a failure."
+                      : "Pull request is " + status + ".",
+                  text: status,
+                }),
+              ]),
+            ]);
+          }));
+        }
+        const scope = state.repo ? shortRepo(state.repo) : "all repos";
+        $("result-count").textContent = plural(sessions.length, "session") + " · " + (state.agent || "all agents") + " · " + scope;
+      }
+
+      function eventBody(event) {
+        if (event.data.message || event.data.body || event.data.summary) {
+          return event.data.message || event.data.body || event.data.summary;
+        }
+        if (Array.isArray(event.data.files) && event.data.files.length) return event.data.files.join("\n");
+        if (event.data.query) return event.data.query;
+        if (event.data.reason) return event.data.reason;
+        if (event.data.server || event.data.toolName) {
+          return [event.data.server, event.data.toolName].filter(Boolean).join(" · ");
+        }
+        return "";
+      }
+
+      function eventStatus(event) {
+        return event.status || event.type.replaceAll("_", " ");
+      }
+
+      function directEventPrNumber(event) {
+        const fromData = Number(event.data.number);
+        if (Number.isInteger(fromData) && fromData > 0) return fromData;
+        const match = String(event.url || event.title || "").match(/(?:\/pull\/|PR\s*#)(\d+)/i);
+        return match ? Number(match[1]) : null;
+      }
+
+      function eventPrNumber(event) {
+        const direct = directEventPrNumber(event);
+        if (direct) return direct;
+        if (event.commitSha && state.timeline) {
+          const related = state.timeline.events.find((candidate) =>
+            candidate.repo === event.repo
+            && candidate.commitSha === event.commitSha
+            && directEventPrNumber(candidate));
+          const relatedNumber = related ? directEventPrNumber(related) : null;
+          if (relatedNumber) return relatedNumber;
+        }
+        const pulls = state.timeline?.session.pullRequests.filter((pull) =>
+          pull.number && (!event.repo || pull.repo === event.repo)) || [];
+        return pulls.length === 1 ? pulls[0].number : null;
+      }
+
+      function withPrNumber(label, event) {
+        const number = eventPrNumber(event);
+        return number ? label + " · #" + number : label;
+      }
+
+      function eventActor(event) {
+        const status = String(event.status || "").toLowerCase();
+        const messageSource = event.data.messageSource;
+        const identity = [
+          event.title,
+          event.data.name,
+          event.data.checkName,
+          event.data.workflow,
+          event.data.app,
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (status === "merged" || event.type === "pr_merged") return "merge";
+        if (event.type === "session_started") return "start";
+        if (messageSource === "user" || event.title === "You messaged Devin") return "you";
+        if (messageSource === "devin" || event.title === "Devin responded") return "cognition";
+        if (messageSource === "codex") return "openai";
+        if (event.type === "turn_started") return "turn-start";
+        if (event.type === "turn_completed") return "turn-complete";
+        if (event.type === "turn_aborted") return "turn-aborted";
+        if (event.type === "context_compacted") return "compacted";
+        if (event.type === "code_changed") return "code-change";
+        if (event.type === "web_search") return "web";
+        if (event.type === "tool_call") {
+          return ({
+            agent: "agent-tool",
+            browser: "browser",
+            code: "code-change",
+            shell: "shell",
+            web: "web",
+          })[event.data.toolCategory] || "tool";
+        }
+        if (event.source === "greptile" || identity.includes("greptile")) return "greptile";
+        if (identity.includes("vercel")) return "vercel";
+        if (identity.includes("gitguardian") || identity.includes("git guardian")) return "gitguardian";
+        if (event.type === "commit_created") return "commit";
+        if (event.type === "pr_opened") return "pr-opened";
+        if (event.type === "review_comment") return "pr-comment";
+        if (event.type === "review_submitted") return "pr-review";
+        if (event.type === "pr_closed") return "pr-closed";
+        if (event.source === "github") return "github";
+        if (event.source === "ci") return "ci";
+        return "system";
+      }
+
+      function displayEventTitle(event) {
+        const actor = eventActor(event);
+        const number = eventPrNumber(event);
+        if (actor === "merge") return number ? "PR #" + number + " merged" : "PR merged";
+        if (actor === "start") return "Start";
+        if (actor === "you") return "You";
+        if (actor === "cognition") return "Cognition";
+        if (actor === "openai") return event.title || "OpenAI";
+        if (actor === "commit") return withPrNumber("Commit", event);
+        if (actor === "pr-opened") return number ? "PR #" + number + " opened" : "PR opened";
+        if (actor === "pr-comment") return number ? "PR #" + number + " comment" : "PR comment";
+        if (actor === "pr-review") return number ? "PR #" + number + " review" : "PR review";
+        if (actor === "pr-closed") return number ? "PR #" + number + " closed" : "PR closed";
+        if (actor === "greptile") {
+          if (event.type === "greptile_comment" || event.type === "review_comment") return withPrNumber("Greptile comment", event);
+          if (event.type === "greptile_review" || event.type === "review_submitted") return withPrNumber("Greptile review", event);
+          return withPrNumber("Greptile check", event);
+        }
+        if (actor === "vercel") return withPrNumber(event.type === "review_comment" ? "Vercel comment" : "Vercel check", event);
+        if (actor === "gitguardian") return withPrNumber("GitGuardian", event);
+        if (actor === "github") {
+          const githubTitles = {
+            commit_created: "Commit",
+            pr_opened: "PR opened",
+            review_comment: "PR comment",
+            review_submitted: "PR review",
+            pr_closed: "PR closed",
+          };
+          return githubTitles[event.type] || event.title;
+        }
+        return event.title;
+      }
+
+      function displayEventSource(event) {
+        const actor = eventActor(event);
+        if (actor === "you") return "You";
+        if (actor === "cognition") return "Cognition";
+        if (actor === "openai") return "OpenAI";
+        if (actor === "greptile") return "Greptile";
+        if (actor === "vercel") return "Vercel";
+        if (actor === "gitguardian") return "GitGuardian";
+        return ({ devin: "System", codex: "Codex", tool: "Tool", github: "GitHub", greptile: "Greptile", ci: "CI" })[event.source]
+          || event.source;
+      }
+
+      function eventTone(event) {
+        const status = String(event.status || "").toLowerCase();
+        const actor = eventActor(event);
+        if (actor === "merge" || actor === "turn-complete") return "merge";
+        if (["failure", "failed", "error", "cancelled"].includes(status) || event.type.includes("failure")) return "failure";
+        if (actor === "you") return "you";
+        if (["cognition", "openai", "system", "start", "turn-start", "compacted"].includes(actor)) return "model";
+        if (["github", "commit", "pr-opened", "pr-comment", "pr-review", "vercel", "code-change"].includes(actor)) return "code";
+        if (actor === "pr-closed" || actor === "turn-aborted") return "failure";
+        if (actor === "greptile") return "review";
+        if (["gitguardian", "ci", "shell", "web", "browser", "agent-tool", "tool"].includes(actor)) return "check";
+        return "neutral";
+      }
+
+      function eventMark(event) {
+        const actor = eventActor(event);
+        const mark = el("span", {
+          class: "timeline-mark",
+          "data-actor": actor,
+          "aria-hidden": "true",
+        });
+        const logos = {
+          cognition: ["https://cognition.com/icon.svg", "C"],
+          greptile: ["https://www.greptile.com/logo-only.svg", "G"],
+          gitguardian: ["https://cdn.prod.website-files.com/5ee25cbe47310017adf964da/68cd6f3765230295aba6fa73_GG%20-%2032px.png", "GG"],
+        };
+        if (logos[actor]) {
+          const [src, fallback] = logos[actor];
+          mark.append(
+            el("img", {
+              src,
+              alt: "",
+              onerror: () => mark.classList.add("logo-failed"),
+            }),
+            el("span", { class: "timeline-mark-fallback", text: fallback }),
+          );
+          return mark;
+        }
+        const symbols = {
+          start: "→",
+          you: "Y",
+          openai: "◎",
+          "turn-start": "→",
+          "turn-complete": "✓",
+          "turn-aborted": "×",
+          compacted: "↘",
+          shell: "$",
+          "code-change": "±",
+          web: "W",
+          browser: "▣",
+          "agent-tool": "A",
+          tool: "T",
+          vercel: "▲",
+          commit: "C",
+          "pr-opened": "↗",
+          "pr-comment": "•••",
+          "pr-review": "✓",
+          "pr-closed": "×",
+          github: "GH",
+          ci: "✓",
+          system: "·",
+        };
+        mark.textContent = symbols[actor] || "·";
+        return mark;
+      }
+
+      function renderEventDetail(event, index, total) {
+        const body = eventBody(event);
+        const meta = [
+          fullDateText(event.occurredAt),
+          event.type === "message_created" ? "" : displayEventSource(event),
+          event.commitSha ? event.commitSha.slice(0, 7) : "",
+          event.path || "",
+        ].filter(Boolean).join(" · ");
+        const displayTitle = displayEventTitle(event);
+        const title = event.url
+          ? el("a", {
+              class: "event-title",
+              id: "event-detail-title",
+              href: event.url,
+              target: "_blank",
+              rel: "noreferrer",
+              text: displayTitle,
+            })
+          : el("h3", { class: "event-title", id: "event-detail-title", text: displayTitle });
+        return el("article", {
+          class: "event-detail",
+          id: "event-detail",
+          "aria-live": "polite",
+          "aria-labelledby": "event-detail-title",
+        }, [
+          el("p", { class: "event-detail-kicker", text: "Event " + (index + 1) + " of " + total }),
+          el("div", { class: "event-heading" }, [
+            title,
+            el("span", {
+              class: "event-status",
+              "data-tone": eventTone(event),
+              text: eventStatus(event),
+            }),
+          ]),
+          el("p", { class: "event-meta", text: meta }),
+          body
+            ? el("pre", { class: "event-data", text: body })
+            : el("p", { class: "event-detail-empty", text: "No additional text was recorded for this event." }),
+          el("details", { class: "event-json" }, [
+            el("summary", { text: "Normalized data" }),
+            el("pre", { class: "event-data", text: JSON.stringify(event.data, null, 2) }),
+          ]),
+        ]);
+      }
+
+      function selectTimelineEvent(index, options) {
+        const timeline = state.timeline;
+        if (!timeline || !timeline.events[index]) return;
+        state.selectedEventIndex = index;
+        const nodes = [...$("events").querySelectorAll(".timeline-node")];
+        for (const [nodeIndex, node] of nodes.entries()) {
+          node.setAttribute("aria-pressed", String(nodeIndex === index));
+        }
+        const currentDetail = $("event-detail");
+        const nextDetail = renderEventDetail(timeline.events[index], index, timeline.events.length);
+        if (currentDetail) currentDetail.replaceWith(nextDetail);
+        else $("events").append(nextDetail);
+        if (options?.focus) {
+          const node = nodes[index];
+          node?.focus();
+          node?.scrollIntoView({ block: "nearest", inline: "center" });
+        }
+      }
+
+      function handleTimelineKey(event, index, total) {
+        let next = index;
+        if (event.key === "ArrowLeft") next = Math.max(0, index - 1);
+        else if (event.key === "ArrowRight") next = Math.min(total - 1, index + 1);
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = total - 1;
+        else return;
+        event.preventDefault();
+        selectTimelineEvent(next, { focus: true });
+      }
+
+      function renderTimeline() {
+        const timeline = state.timeline;
+        if (!timeline) return;
+        const { session, events } = timeline;
+        const repo = state.repo || session.repositories[0] || "Unlinked";
+        $("dialog-kicker").textContent = repo + " · " + session.agent;
+        $("dialog-title").textContent = session.title;
+        const summary = [
+          session.status,
+          plural(events.length, "event"),
+          dateText(session.startedAt),
+        ];
+        const acus = Number(session.acusConsumed || 0);
+        if (session.agent === "devin" && acus > 0) summary.splice(1, 0, acus.toLocaleString() + " ACU");
+        $("dialog-summary").textContent = summary.join(" · ");
+        $("dialog-summary").title = acus > 0
+          ? "ACU means Agent Compute Unit: compute used by this session."
+          : "";
+        $("download-json").href = "/api/sessions/" + encodeURIComponent(session.id) + "/export";
+
+        const links = [];
+        if (session.url) links.push(el("a", { href: session.url, target: "_blank", rel: "noreferrer", text: "Open in " + (session.agent === "codex" ? "Codex" : "Devin") + " ↗" }));
+        for (const pull of session.pullRequests) {
+          links.push(el("a", { href: pull.url, target: "_blank", rel: "noreferrer", text: "PR #" + (pull.number || "") + " ↗" }));
+        }
+        $("dialog-links").replaceChildren(...links);
+
+        if (!events.length) {
+          $("events").replaceChildren(el("p", { class: "empty", text: "No normalized events." }));
+          return;
+        }
+        state.selectedEventIndex = Math.min(state.selectedEventIndex, events.length - 1);
+        const track = el("ol", { class: "timeline-track" }, events.map((event, index) =>
+          el("li", { class: "timeline-step" }, [
+            el("button", {
+              class: "timeline-node",
+              type: "button",
+              "data-event-index": String(index),
+              "data-tone": eventTone(event),
+              "data-actor": eventActor(event),
+              "aria-pressed": String(index === state.selectedEventIndex),
+              "aria-controls": "event-detail",
+              "aria-label": "Event " + (index + 1) + " of " + events.length + ": " + displayEventTitle(event) + ", " + fullDateText(event.occurredAt) + ", " + eventStatus(event),
+              onclick: () => selectTimelineEvent(index),
+              onkeydown: (keyEvent) => handleTimelineKey(keyEvent, index, events.length),
+            }, [
+              eventMark(event),
+              el("span", { class: "timeline-node-meta", text: String(index + 1).padStart(2, "0") }),
+              el("span", { class: "timeline-node-title", text: displayEventTitle(event) }),
+            ]),
+          ])
+        ));
+        const scroll = el("div", {
+          class: "timeline-scroll",
+          role: "region",
+          "aria-label": "Session event timeline",
+        }, [track]);
+        $("events").replaceChildren(
+          scroll,
+          renderEventDetail(events[state.selectedEventIndex], state.selectedEventIndex, events.length),
+        );
+      }
+
+      function showDialog(trigger) {
+        state.trigger = trigger;
+        $("page-shell").inert = true;
+        $("dialog-layer").hidden = false;
+        document.body.classList.add("modal-open");
+        $("dialog-close").focus();
+      }
+
+      function closeDialog() {
+        if ($("dialog-layer").hidden) return;
+        $("dialog-layer").hidden = true;
+        $("page-shell").inert = false;
+        document.body.classList.remove("modal-open");
+        const trigger = state.trigger;
+        state.trigger = null;
+        state.timeline = null;
+        state.selectedEventIndex = 0;
+        if (trigger && trigger.isConnected) trigger.focus();
+      }
+
+      async function openSession(id, trigger) {
+        const request = ++state.request;
+        showDialog(trigger);
+        $("dialog-title").textContent = "Loading session…";
+        $("dialog-summary").textContent = "Reading normalized events.";
+        $("dialog-links").replaceChildren();
+        $("events").replaceChildren(el("p", { class: "empty", text: "Loading timeline…" }));
+        try {
+          const timeline = await api("/api/sessions/" + encodeURIComponent(id));
+          if (request !== state.request) return;
+          state.timeline = timeline;
+          renderTimeline();
+        } catch (error) {
+          if (request !== state.request) return;
+          $("events").replaceChildren(el("p", { class: "dialog-error", text: error.message }));
+        }
+      }
+
+      async function loadSessions() {
+        $("result-count").textContent = "Loading sessions…";
+        const params = new URLSearchParams();
+        if (state.agent) params.set("agent", state.agent);
+        if (state.repo) params.set("repo", state.repo);
+        const result = await api("/api/sessions" + (params.size ? "?" + params : ""));
+        state.sessions = result.sessions;
+        renderSessions();
+      }
+
+      async function loadAgentData() {
+        $("repos").replaceChildren(el("span", { class: "meta", text: "Loading repositories…" }));
+        const repos = await api("/api/repos" + (state.agent ? "?agent=" + encodeURIComponent(state.agent) : ""));
+        state.repos = repos.repos;
+        await loadSessions();
+        renderRepos();
+      }
+
+      async function initialize() {
+        try {
+          state.app = await api("/api/state");
+          renderConnection();
+          await loadAgentData();
+        } catch (error) {
+          document.querySelector("main").replaceChildren(el("p", { class: "dialog-error", text: error.message }));
+        }
+      }
+
+      $("search").addEventListener("input", (event) => {
+        state.query = event.target.value;
+        renderSessions();
+      });
+
+      $("sync").addEventListener("click", async () => {
+        if ($("sync").disabled) return;
+        $("sync").disabled = true;
+        $("sync").textContent = "Syncing…";
+        try {
+          await api("/api/sync?agent=" + encodeURIComponent(state.agent), { method: "POST" });
+          state.app = await api("/api/state");
+          renderConnection();
+          await loadAgentData();
+        } catch (error) {
+          $("result-count").textContent = error.message;
+          $("sync").disabled = false;
+          $("sync").textContent = "Sync";
+        }
+      });
+
+      $("dialog-close").addEventListener("click", closeDialog);
+      $("dialog-layer").addEventListener("click", (event) => {
+        if (event.target === $("dialog-layer")) closeDialog();
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if ($("dialog-layer").hidden) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeDialog();
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const focusable = [...$("session-dialog").querySelectorAll(
+          "button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])",
+        )];
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      });
+
+      initialize();
+    </script>
+  </body>
+</html>

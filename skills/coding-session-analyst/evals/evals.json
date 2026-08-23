@@ -1,0 +1,32 @@
+{
+  "skill_name": "coding-session-analyst",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Analyze this structured coding-agent session thoroughly. Walk every event in order, identify evidence-backed failures or waste, calculate only attributable token/time waste, and create replay tests. Save the strict JSON result as session-analysis.json.",
+      "expected_output": "A validated per-session JSON analysis identifying the repeated unchanged failing command and the ignored requireUser requirement, with exact evidence IDs, conservative measurement, counterevidence, and falsifiable replay tests.",
+      "files": ["evals/files/repeated-command-and-correction.json"],
+      "expectations": [
+        "The analysis cites only event IDs present in the transcript and reports all 14 events reviewed.",
+        "The analysis identifies the unchanged npm test account retry loop using events evt-003 through evt-006.",
+        "The analysis identifies the ignored requireUser constraint and subsequent user correction using evt-001 and evt-009 through evt-012.",
+        "Token counts are derived only from explicit usage fields; unavailable or ambiguous costs are not invented.",
+        "Each retained insight contains an observable replay failure condition and success condition.",
+        "The bundled validator accepts the produced session-analysis.json."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Analyze this structured coding-agent session thoroughly. Walk every event in order, retain only evidence-backed failures or waste, and do not punish necessary debugging. Save the strict JSON result as session-analysis.json.",
+      "expected_output": "A validated report that recognizes the failed test as productive debugging because it supplied new information, with zero retained slugs unless another issue is concretely demonstrated.",
+      "files": ["evals/files/healthy-debugging.json"],
+      "expectations": [
+        "The analysis cites only event IDs present in the transcript and reports all 9 events reviewed.",
+        "The analysis does not classify the first failed test and evidence-driven correction as waste.",
+        "The analysis reports no invented token or time waste.",
+        "The outcome is completed and cites the passing targeted test or final verified result.",
+        "The bundled validator accepts the produced session-analysis.json."
+      ]
+    }
+  ]
+}

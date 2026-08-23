@@ -1,0 +1,93 @@
+{
+  "session": {
+    "id": "fixture-healthy-debugging",
+    "repo": "acme/payments",
+    "status": "completed"
+  },
+  "events": [
+    {
+      "id": "evt-101",
+      "sequence": 1,
+      "occurred_at": "2026-08-23T11:00:00Z",
+      "type": "user_message",
+      "message": "Fix the rounding bug in invoice totals and run the targeted tests.",
+      "usage": {"total_tokens": 25}
+    },
+    {
+      "id": "evt-102",
+      "sequence": 2,
+      "occurred_at": "2026-08-23T11:00:20Z",
+      "type": "tool_result",
+      "tool": "search",
+      "query": "invoice total rounding",
+      "output": "Found calculation in src/invoices/total.ts and tests in total.test.ts",
+      "usage": {"total_tokens": 180}
+    },
+    {
+      "id": "evt-103",
+      "sequence": 3,
+      "occurred_at": "2026-08-23T11:00:45Z",
+      "type": "tool_result",
+      "tool": "read",
+      "path": "src/invoices/total.ts",
+      "output": "Rounds each line before summing",
+      "usage": {"total_tokens": 210}
+    },
+    {
+      "id": "evt-104",
+      "sequence": 4,
+      "occurred_at": "2026-08-23T11:01:30Z",
+      "type": "edit",
+      "path": "src/invoices/total.ts",
+      "summary": "Changed calculation to sum precise line values and round the final total.",
+      "usage": {"total_tokens": 420}
+    },
+    {
+      "id": "evt-105",
+      "sequence": 5,
+      "occurred_at": "2026-08-23T11:02:00Z",
+      "type": "tool_result",
+      "tool": "shell",
+      "command": "npm run test:invoice -- total",
+      "exit_code": 1,
+      "output": "One negative-credit rounding case failed: expected -1.01, received -1",
+      "usage": {"total_tokens": 240}
+    },
+    {
+      "id": "evt-106",
+      "sequence": 6,
+      "occurred_at": "2026-08-23T11:02:30Z",
+      "type": "assistant_message",
+      "message": "The failure reveals Math.round handles negative half values differently. I will use the existing moneyRound helper.",
+      "usage": {"total_tokens": 160}
+    },
+    {
+      "id": "evt-107",
+      "sequence": 7,
+      "occurred_at": "2026-08-23T11:03:00Z",
+      "type": "edit",
+      "path": "src/invoices/total.ts",
+      "summary": "Used moneyRound for the final total.",
+      "usage": {"total_tokens": 260}
+    },
+    {
+      "id": "evt-108",
+      "sequence": 8,
+      "occurred_at": "2026-08-23T11:03:30Z",
+      "type": "tool_result",
+      "tool": "shell",
+      "command": "npm run test:invoice -- total",
+      "exit_code": 0,
+      "output": "18 passed",
+      "usage": {"total_tokens": 230}
+    },
+    {
+      "id": "evt-109",
+      "sequence": 9,
+      "occurred_at": "2026-08-23T11:03:50Z",
+      "type": "assistant_message",
+      "message": "Fixed final-total rounding with moneyRound; all 18 targeted tests pass.",
+      "usage": {"total_tokens": 120}
+    }
+  ]
+}
