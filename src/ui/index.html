@@ -1178,8 +1178,8 @@
           "aria-disabled": String(!state.repo || state.reporting || !state.app?.reportConfigured),
           text: state.reporting ? "Generating report…" : "Failure report",
           title: !state.repo
-            ? "Choose a repository to generate its failure report"
-            : "Analyze every session for this repository and generate one report",
+            ? "Choose a repository to open its failure report"
+            : "Open the existing report, or generate one if none exists",
           onclick: generateReport,
         });
         $("repos").replaceChildren(menu, report);
@@ -1188,6 +1188,16 @@
       async function generateReport() {
         const repo = state.repo;
         if (!repo || state.reporting || !state.app?.reportConfigured) return;
+        try {
+          const existing = await api("/api/reports/" + encodeURIComponent(repo));
+          if (existing.existingReport && existing.url) {
+            window.location.href = existing.url;
+            return;
+          }
+        } catch (error) {
+          $("result-count").textContent = error.message;
+          return;
+        }
         state.reporting = true;
         renderRepos();
         $("result-count").textContent = "Analyzing every " + shortRepo(repo) + " session and grouping the failures…";
@@ -1506,17 +1516,6 @@
         ]);
       }
 
-      function formatWaste(analysis) {
-        const totals = analysis.totals;
-        const tokens = totals.wasted_tokens === null
-          ? "tokens unavailable"
-          : totals.wasted_tokens.toLocaleString() + " wasted tokens";
-        const time = totals.wasted_seconds === null
-          ? "time unavailable"
-          : Math.round(totals.wasted_seconds).toLocaleString() + " wasted seconds";
-        return tokens + " · " + time;
-      }
-
       function renderAnalysisPanel() {
         if (state.analyzing) {
           return el("section", {
@@ -1525,8 +1524,7 @@
             "aria-live": "polite",
           }, [
             el("div", { class: "analysis-head" }, [
-              el("h3", { class: "analysis-label", text: "Failure hypotheses" }),
-              el("span", { class: "analysis-state", text: "Analyzing" }),
+              el("h3", { class: "analysis-label", text: "Claim" }),
             ]),
             el("p", { class: "analysis-empty", text: "Walking every normalized event in order…" }),
           ]);
@@ -1537,8 +1535,7 @@
         if (!analysis) {
           return el("section", { class: "analysis-panel", "aria-live": "polite" }, [
             el("div", { class: "analysis-head" }, [
-              el("h3", { class: "analysis-label", text: "Failure hypotheses" }),
-              el("span", { class: "analysis-state", text: "Not analyzed" }),
+              el("h3", { class: "analysis-label", text: "Claim" }),
             ]),
             el("p", {
               class: "analysis-empty",
@@ -1548,11 +1545,8 @@
         }
 
         const insights = analysis.insights || [];
-        const stateText = record.stale ? "Changed · analyze again" : "Analyzed";
-        const created = record.createdAt ? " · " + fullDateText(record.createdAt) : "";
-        const cards = insights.map((insight, index) => el("details", {
+        const cards = insights.map((insight) => el("details", {
           class: "insight-card",
-          ...(index === 0 ? { open: "" } : {}),
         }, [
           el("summary", { class: "insight-summary" }, [
             el("span", { class: "insight-title", text: insight.title }),
@@ -1598,13 +1592,8 @@
 
         return el("section", { class: "analysis-panel", "aria-live": "polite" }, [
           el("div", { class: "analysis-head" }, [
-            el("h3", { class: "analysis-label", text: "Failure hypotheses" }),
-            el("span", { class: "analysis-state", text: stateText }),
+            el("h3", { class: "analysis-label", text: "Claim" }),
           ]),
-          el("p", {
-            class: "analysis-meta",
-            text: plural(insights.length, "hypothesis") + " · " + formatWaste(analysis) + created,
-          }),
           state.analysisError ? el("p", { class: "analysis-error", text: state.analysisError }) : null,
           insights.length
             ? el("div", { class: "insight-list" }, cards)
@@ -1715,9 +1704,9 @@
           "aria-label": "Session event timeline",
         }, [track]);
         $("events").replaceChildren(
-          renderAnalysisPanel(),
           scroll,
           renderEventDetail(events[state.selectedEventIndex], state.selectedEventIndex, events.length),
+          renderAnalysisPanel(),
         );
       }
 

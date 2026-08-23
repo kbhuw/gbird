@@ -134,7 +134,7 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
     assert.ok(html.includes("eventPrNumber"));
     assert.ok(html.includes("Normalized data"));
     assert.ok(html.includes("Analyze"));
-    assert.ok(html.includes("Failure hypotheses"));
+    assert.ok(html.includes("Claim"));
     assert.ok(html.includes("Failure report"));
 
     const about = await (await fetch(new URL("/about", running.url))).text();
