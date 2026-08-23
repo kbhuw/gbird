@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertRepoReport } from "../src/reporter.js";
+import { assertRepoReport, normalizeRepoReport } from "../src/reporter.js";
 import type { AgentKind, RepoFailureReport, RepoReportInput, SessionAnalysis } from "../src/schema.js";
 
 function analyzedSession(id: string, agent: AgentKind): RepoReportInput["sessions"][number] {
@@ -77,6 +77,9 @@ test("requires every session insight to appear exactly once in a repo report", (
   };
 
   assert.doesNotThrow(() => assertRepoReport(input, report));
+  const mixedInput = structuredClone(input);
+  mixedInput.sessions[1]!.analysis.insights[0]!.category = "missed_requirement";
+  assert.throws(() => assertRepoReport(mixedInput, report), /mixes different source categories/);
   const omitted = structuredClone(report);
   omitted.failures[0]!.occurrences.pop();
   omitted.failures[0]!.historical_occurrence_count = 1;
@@ -84,4 +87,11 @@ test("requires every session insight to appear exactly once in a repo report", (
   omitted.failures[0]!.classification = "single_occurrence";
   omitted.coverage.included_insights = 1;
   assert.throws(() => assertRepoReport(input, omitted), /omitted 1 input insight/);
+
+  const duplicated = structuredClone(report);
+  duplicated.failures.push({ ...structuredClone(duplicated.failures[0]!), id: "failure-002" });
+  const normalized = normalizeRepoReport(input, duplicated);
+  assert.equal(normalized.failures.length, 1);
+  assert.equal(normalized.coverage.included_insights, 2);
+  assert.doesNotThrow(() => assertRepoReport(input, normalized));
 });

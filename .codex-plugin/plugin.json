@@ -1,6 +1,6 @@
 {
   "name": "gbird",
-  "version": "0.1.0+codex.20260823222940",
+  "version": "0.1.4",
   "description": "Generate evidence-backed coding-agent failure reports for a repository.",
   "author": {
     "name": "Kush Bhuwalka"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "gbird",
     "shortDescription": "Generate coding-agent failure reports",
-    "longDescription": "Collect Codex and Devin sessions for one repository, normalize and analyze them, group equivalent failures, and generate a readable report with a neutral reproduction prompt for every finding.",
+    "longDescription": "Collect Codex and Devin sessions for one repository, group evidence-backed failures, replay each one with a context-free subagent, and write a verified HTML and JSON report.",
     "developerName": "Kush Bhuwalka",
     "category": "Productivity",
     "capabilities": [

@@ -149,6 +149,43 @@ export interface RepoFailureOccurrence {
   evidence_event_ids: string[];
 }
 
+export type ReproductionVerdict = "reproduced" | "not_reproduced" | "inconclusive";
+export type ReproductionTaskOutcome = "completed" | "blocked" | "failed";
+
+export interface BlindReproductionInput {
+  failure_id: string;
+  attempt_id: string;
+  checkout_sha: string;
+  agent: string;
+  task_outcome: ReproductionTaskOutcome;
+  summary: string;
+  observed_actions: string[];
+  evidence: string[];
+  failure_condition_observed: boolean;
+  success_condition_observed: boolean;
+  evaluation: string;
+  limitations: string[];
+}
+
+export interface BlindReproductionAttempt extends BlindReproductionInput {
+  verdict: ReproductionVerdict;
+}
+
+export interface FailureVerification {
+  status: "not_run" | ReproductionVerdict;
+  checked_at: string | null;
+  checkout_sha: string | null;
+  attempts: BlindReproductionAttempt[];
+}
+
+export interface ReproductionBundle {
+  verification_schema_version: 1;
+  repo: string;
+  verified_at: string;
+  checkout_sha: string;
+  results: BlindReproductionInput[];
+}
+
 export interface RepoFailure {
   id: string;
   title: string;
@@ -168,6 +205,7 @@ export interface RepoFailure {
     success_condition: string;
   };
   suggested_guardrail: string;
+  verification?: FailureVerification;
 }
 
 export interface RepoFailureReport {

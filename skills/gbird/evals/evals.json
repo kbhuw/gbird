@@ -1,0 +1,11 @@
+{
+  "skill_name": "gbird",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "The candidate report is already generated. Finish gbird for this report and the supplied clean repository, then produce the final report.html and report.json only.",
+      "expected_output": "The final JSON records a blind replay verdict and evidence without exposing hidden failure context to the worker; the HTML shows the same verdict.",
+      "files": []
+    }
+  ]
+}

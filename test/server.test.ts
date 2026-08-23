@@ -138,8 +138,8 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
     assert.ok(html.includes("Failure report"));
 
     const about = await (await fetch(new URL("/about", running.url))).text();
-    assert.ok(about.includes("Coding agents leave a trail"));
-    assert.ok(about.includes("Receipts or it isn’t a slug"));
+    assert.ok(about.includes("Find where coding agents fail"));
+    assert.ok(about.includes("Replay blindly"));
     assert.ok(about.includes("href=\"/\""));
 
     const state = await (await fetch(new URL("/api/state", running.url))).json() as {

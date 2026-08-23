@@ -14,9 +14,11 @@ import { generateRepoReport } from "./repo-report.js";
 import { resolveRepoScope } from "./repo-scope.js";
 import { renderRepoReportHtml } from "./report-html.js";
 import { createCodexRepoReporter } from "./reporter.js";
+import { applyBlindReproductions, verificationCounts } from "./reproduction.js";
 import { startServer } from "./server.js";
 import { TimelineStore } from "./store.js";
 import { syncTimeline } from "./sync.js";
+import type { RepoFailureReport, ReproductionBundle, StoredRepoReport } from "./schema.js";
 
 function loadEnv(filename = ".env"): void {
   if (!fs.existsSync(filename)) return;
@@ -132,6 +134,40 @@ async function main(): Promise<void> {
       codexRoots: codexRoots(),
     });
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
+    store.close();
+    return;
+  }
+
+  if (command === "verify") {
+    const reportPath = option("--report");
+    const resultsPath = option("--results");
+    if (!reportPath || !resultsPath) throw new Error("Pass --report report.json and --results reproductions.json.");
+    const resolvedReportPath = path.resolve(reportPath);
+    const resolvedResultsPath = path.resolve(resultsPath);
+    const report = JSON.parse(fs.readFileSync(resolvedReportPath, "utf8")) as RepoFailureReport;
+    const results = JSON.parse(fs.readFileSync(resolvedResultsPath, "utf8")) as ReproductionBundle;
+    const verified = applyBlindReproductions(report, results);
+    const existing = store.getRepoReport(verified.repo);
+    const record: StoredRepoReport = existing
+      ? { ...existing, report: verified }
+      : {
+        repo: verified.repo,
+        inputHash: "external-report",
+        analyzer: "gbird-blind-reproduction",
+        createdAt: results.verified_at,
+        report: verified,
+      };
+    store.upsertRepoReport(record);
+    const htmlPath = path.resolve(option("--html") ?? path.join(path.dirname(resolvedReportPath), "report.html"));
+    fs.writeFileSync(resolvedReportPath, `${JSON.stringify(verified, null, 2)}\n`);
+    fs.writeFileSync(htmlPath, renderRepoReportHtml(record));
+    process.stdout.write(`${JSON.stringify({
+      repo: verified.repo,
+      checkoutSha: results.checkout_sha,
+      verification: verificationCounts(verified),
+      reportJson: resolvedReportPath,
+      reportHtml: htmlPath,
+    }, null, 2)}\n`);
     store.close();
     return;
   }
