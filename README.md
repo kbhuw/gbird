@@ -72,6 +72,8 @@ Each session can be downloaded from the UI as JSON:
 
 Open a session and press **Analyze**. gbird gives that session's normalized JSON timeline to the bundled `coding-session-analyst` skill through an ephemeral, read-only Codex run. The result is stored in SQLite and shown above the event timeline.
 
+Analyzed sessions are marked in the session list. gbird reuses a saved analysis while its normalized timeline is unchanged.
+
 Each hypothesis contains exact evidence event IDs, conservative token/time accounting, counterevidence, and a neutral replay specification. Evidence buttons jump to the supporting timeline node.
 
 This stage does not claim a recurring failure. A later validator will run the replay task with a fresh coding agent in a clean Daytona sandbox and classify it as `reproduced`, `not_reproduced`, or `inconclusive`.
@@ -82,10 +84,11 @@ Choose a repository in the dashboard and press **Failure report**, or run:
 
 ```bash
 npm run build
-npm run report -- --repo owner/repo --db .data/gbird.db
+node dist/src/cli.js inventory --repo owner/repo --db .data/gbird.db
+npm run report -- --repo owner/repo --db .data/gbird.db --all
 ```
 
-The command imports every available Codex and configured Devin session unless `--skip-sync` is supplied, analyzes every session for the selected repository, groups only equivalent failures, and writes:
+Use `--limit N`, `--codex-limit N`, `--devin-limit N`, or `--skip-sync` for a deliberate smaller scope. There is no hidden report limit. The command analyzes the selected repository sessions, reuses unchanged saved analyses, groups only equivalent failures, and writes:
 
 - `~/.gbird/reports/owner--repo/report.html`
 - `~/.gbird/reports/owner--repo/report.json`

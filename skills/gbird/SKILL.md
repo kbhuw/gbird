@@ -13,16 +13,23 @@ gbird analyzes the coding agent's behavior, not functional bugs in its code. Gre
 
 1. Resolve the repository from an explicit `owner/repo` supplied by the user. Otherwise read the current checkout's `origin` remote. Do not guess when neither exists.
 2. Use the persistent database at `~/.gbird/gbird.db` unless the user supplies another database.
-3. Run the bundled script from this skill directory:
+3. Inspect the available and already analyzed sessions before choosing a scope:
 
 ```bash
-node scripts/gbird.mjs report --repo owner/repo --db "$HOME/.gbird/gbird.db"
+node scripts/gbird.mjs inventory --repo owner/repo --db "$HOME/.gbird/gbird.db"
+```
+
+4. Choose the scope from the inventory and the user's goal. Use `--all` for a complete audit, an explicit `--limit N` for a bounded recent pass, source-specific `--codex-limit N` and `--devin-limit N` when appropriate, or `--skip-sync` when the imported set is intentionally sufficient. Never accept a hidden default limit. Briefly state the choice and why.
+5. Run the bundled script from this skill directory:
+
+```bash
+node scripts/gbird.mjs report --repo owner/repo --db "$HOME/.gbird/gbird.db" --all
 ```
 
 The script path above is relative to this `SKILL.md`, not the user's repository. Execute it using the skill's resolved absolute path when the current directory differs.
 
-4. Let the command finish. It may analyze many sessions. Report meaningful progress, but do not substitute a partial report.
-5. Return the final session count, failure count, recurring-pattern count, and clickable absolute paths to `report.html` and `report.json`.
+6. Let the command finish. It may analyze many sessions. Fresh saved analyses are reused by timeline hash; only new or changed sessions are analyzed. Report meaningful progress, but do not substitute a partial report.
+7. Return the chosen scope, final session count, failure count, recurring-pattern count, and clickable absolute paths to `report.html` and `report.json`.
 
 ## Evidence rules
 

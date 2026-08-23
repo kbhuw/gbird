@@ -289,8 +289,16 @@
 
       .session-identity { min-width: 0; padding: 7px 0; }
 
+      .session-title-line {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 8px;
+      }
+
       .session-title {
         display: block;
+        flex: 0 1 auto;
         min-width: 0;
         overflow: hidden;
         font-size: 14px;
@@ -299,6 +307,21 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+
+      .analysis-badge {
+        flex: 0 0 auto;
+        padding: 0 5px;
+        border: 1px solid var(--rule);
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 8px;
+        line-height: 14px;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+
+      .analysis-badge[data-state="analyzed"] { color: var(--foreground); border-color: var(--muted); }
+      .analysis-badge[data-state="stale"] { color: var(--danger); border-color: var(--danger); }
 
       .session-repo {
         display: block;
@@ -1200,11 +1223,19 @@
                 type: "button",
                 "aria-haspopup": "dialog",
                 "aria-controls": "session-dialog",
-                "aria-label": session.title + ", " + dateText(session.startedAt) + ", " + status,
+                "aria-label": session.title + ", " + dateText(session.startedAt) + ", " + status + (session.analysisStatus === "analyzed" ? ", analyzed" : ""),
+                "data-session-id": session.id,
                 onclick: (event) => openSession(session.id, event.currentTarget),
               }, [
                   el("span", { class: "session-identity" }, [
-                    el("span", { class: "session-title", text: session.title }),
+                    el("span", { class: "session-title-line" }, [
+                      el("span", { class: "session-title", text: session.title }),
+                      session.analysisStatus === "analyzed"
+                        ? el("span", { class: "analysis-badge", "data-state": "analyzed", text: "Analyzed" })
+                        : session.analysisStatus === "stale"
+                          ? el("span", { class: "analysis-badge", "data-state": "stale", text: "Changed" })
+                          : null,
+                    ]),
                   el("span", { class: "session-repo", text: repo || "unlinked" }),
                 ]),
                 el("span", { class: "session-date", text: dateText(session.startedAt) }),
@@ -1227,7 +1258,8 @@
           }));
         }
         const scope = state.repo ? shortRepo(state.repo) : "all repos";
-        $("result-count").textContent = plural(sessions.length, "session") + " · " + (state.agent || "all agents") + " · " + scope;
+        const analyzed = sessions.filter((session) => session.analysisStatus === "analyzed").length;
+        $("result-count").textContent = plural(sessions.length, "session") + " · " + analyzed.toLocaleString() + " analyzed · " + (state.agent || "all agents") + " · " + scope;
       }
 
       function eventBody(event) {
@@ -1516,7 +1548,7 @@
         }
 
         const insights = analysis.insights || [];
-        const stateText = record.stale ? "Stale · unvalidated" : "Unvalidated";
+        const stateText = record.stale ? "Changed · analyze again" : "Analyzed";
         const created = record.createdAt ? " · " + fullDateText(record.createdAt) : "";
         const cards = insights.map((insight, index) => el("details", {
           class: "insight-card",
@@ -1615,12 +1647,15 @@
         if (!timeline) return;
         const { session, events } = timeline;
         const repo = state.repo || session.repositories[0] || "Unlinked";
-        $("analyze-session").disabled = state.analyzing || !state.app?.analysisConfigured;
+        const analyzed = Boolean(state.analysisRecord?.analysis && !state.analysisRecord?.stale);
+        $("analyze-session").disabled = state.analyzing || analyzed || !state.app?.analysisConfigured;
         $("analyze-session").textContent = state.analyzing
           ? "Analyzing…"
-          : state.analysisRecord?.analysis
-            ? "Re-analyze"
-            : "Analyze";
+          : analyzed
+            ? "Analyzed"
+            : state.analysisRecord?.analysis
+              ? "Analyze again"
+              : "Analyze";
         $("analyze-session").title = state.app?.analysisConfigured
           ? "Generate failure hypotheses from this normalized session"
           : "The coding-session-analyst skill is unavailable";
@@ -1696,6 +1731,7 @@
 
       function closeDialog() {
         if ($("dialog-layer").hidden) return;
+        const sessionId = state.timeline?.session.id;
         $("dialog-layer").hidden = true;
         $("page-shell").inert = false;
         document.body.classList.remove("modal-open");
@@ -1706,7 +1742,11 @@
         state.analysisError = "";
         state.analyzing = false;
         state.selectedEventIndex = 0;
-        if (trigger && trigger.isConnected) trigger.focus();
+        renderSessions();
+        const nextTrigger = [...document.querySelectorAll("[data-session-id]")]
+          .find((candidate) => candidate.getAttribute("data-session-id") === sessionId);
+        if (nextTrigger) nextTrigger.focus();
+        else if (trigger && trigger.isConnected) trigger.focus();
       }
 
       async function openSession(id, trigger) {
@@ -1794,6 +1834,12 @@
           const record = await api("/api/sessions/" + encodeURIComponent(id) + "/analysis", { method: "POST" });
           if (state.timeline?.session.id !== id) return;
           state.analysisRecord = record;
+          const session = state.sessions.find((candidate) => candidate.id === id);
+          if (session) {
+            session.analysisStatus = record.stale ? "stale" : "analyzed";
+            session.analyzedAt = record.createdAt;
+            session.analysisInsightCount = record.analysis?.insights?.length || 0;
+          }
         } catch (error) {
           if (state.timeline?.session.id !== id) return;
           state.analysisError = error.message;

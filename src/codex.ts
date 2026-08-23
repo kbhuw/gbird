@@ -335,6 +335,14 @@ function jsonlFiles(root: string): string[] {
   return files;
 }
 
+export function countCodexSessionFiles(roots?: string[]): number {
+  const selected = roots ?? [
+    path.join(os.homedir(), ".codex", "sessions"),
+    path.join(os.homedir(), ".codex", "archived_sessions"),
+  ];
+  return selected.flatMap(jsonlFiles).length;
+}
+
 function readJsonl(filename: string): { records: CodexRecord[]; skipped: number } {
   const records: CodexRecord[] = [];
   let skipped = 0;

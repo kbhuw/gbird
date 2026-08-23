@@ -9,6 +9,7 @@ import {
   timelineHash,
   type AnalyzeSession,
 } from "./analyzer.js";
+import { sessionWithAnalysisState } from "./analysis-state.js";
 import { syncCodexTimeline, type CodexSyncSummary } from "./codex.js";
 import { DevinClient } from "./devin.js";
 import { GitHubClient } from "./github.js";
@@ -262,12 +263,13 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       }
 
       if (request.method === "GET" && url.pathname === "/api/sessions") {
+        const sessions = options.store.listSessions({
+          agent: requestedAgent(url),
+          repo: url.searchParams.get("repo") || undefined,
+          query: url.searchParams.get("q") || undefined,
+        });
         json(response, 200, {
-          sessions: options.store.listSessions({
-            agent: requestedAgent(url),
-            repo: url.searchParams.get("repo") || undefined,
-            query: url.searchParams.get("q") || undefined,
-          }),
+          sessions: sessions.map((session) => sessionWithAnalysisState(options.store, session)),
         });
         return;
       }
@@ -312,6 +314,17 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
           json(response, 403, { error: "Cross-origin requests are not allowed." });
           return;
         }
+        const existing = options.store.getAnalysis(id);
+        if (existing?.inputHash === inputHash) {
+          json(response, 200, {
+            analysis: existing.analysis,
+            createdAt: existing.createdAt,
+            analyzer: existing.analyzer,
+            stale: false,
+            cached: true,
+          });
+          return;
+        }
         if (!hasAnalyzer) {
           json(response, 503, { error: "The coding-session-analyst skill or Codex CLI is not available." });
           return;
@@ -338,6 +351,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
             createdAt: stored?.createdAt ?? null,
             analyzer: stored?.analyzer ?? null,
             stale: false,
+            cached: false,
           });
         } catch (error) {
           json(response, 503, { error: error instanceof Error ? error.message : String(error) });

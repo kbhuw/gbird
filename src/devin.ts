@@ -112,6 +112,14 @@ function repoFromTag(tag: string): string | null {
   return match?.[1] ?? null;
 }
 
+export function repositoryHintsForDevinSession(rawSession: DevinSessionResponse): string[] {
+  return [...new Set([
+    ...(rawSession.pull_requests ?? [])
+      .map((pullRequest) => pullRequest.pr_url ? parsePullRequestUrl(pullRequest.pr_url)?.repo ?? null : null),
+    ...(rawSession.tags ?? []).map(repoFromTag),
+  ].filter((repo): repo is string => Boolean(repo)))];
+}
+
 function reposFromText(text: string): string[] {
   const repos = new Set<string>();
   const patterns = [
@@ -152,8 +160,7 @@ export function normalizeDevinSession(
     isoTimestamp(a.created_at).localeCompare(isoTimestamp(b.created_at)));
   const firstUserMessage = messages.find((message) => message.source === "user" && message.message)?.message ?? null;
   const repositories = [...new Set([
-    ...pullRequests.map((pullRequest) => pullRequest.repo).filter((repo): repo is string => Boolean(repo)),
-    ...(rawSession.tags ?? []).map(repoFromTag).filter((repo): repo is string => Boolean(repo)),
+    ...repositoryHintsForDevinSession(rawSession),
     ...reposFromText([rawSession.title ?? "", ...messages.map((message) => message.message ?? "")].join("\n")),
   ])].sort();
   const startedAt = isoTimestamp(rawSession.created_at);

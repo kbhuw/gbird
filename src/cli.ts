@@ -9,6 +9,7 @@ import { syncCodexTimeline } from "./codex.js";
 import { seedDemo } from "./demo.js";
 import { DevinClient } from "./devin.js";
 import { GitHubClient } from "./github.js";
+import { inspectInventory } from "./inventory.js";
 import { generateRepoReport } from "./repo-report.js";
 import { resolveRepoScope } from "./repo-scope.js";
 import { renderRepoReportHtml } from "./report-html.js";
@@ -75,22 +76,40 @@ function reportDirectory(repo: string): string {
   return path.resolve(option("--out") ?? process.env.GBIRD_REPORT_DIR ?? path.join(os.homedir(), ".gbird", "reports", repo.replaceAll("/", "--")));
 }
 
-async function collectAvailableSessions(store: TimelineStore, limit: number): Promise<void> {
-  const roots = process.env.CODEX_SESSIONS_ROOT
+const ALL_SESSIONS_LIMIT = 1_000_000;
+
+function codexRoots(): string[] {
+  return process.env.CODEX_SESSIONS_ROOT
     ? [path.resolve(process.env.CODEX_SESSIONS_ROOT)]
     : [path.join(os.homedir(), ".codex", "sessions"), path.join(os.homedir(), ".codex", "archived_sessions")];
-  if (roots.some((root) => fs.existsSync(root))) {
-    const result = await syncCodexTimeline({ store, limit, roots });
+}
+
+function selectedLimit(name: string, shared: string | undefined, all: boolean): number {
+  if (all) return ALL_SESSIONS_LIMIT;
+  const raw = option(name) ?? shared;
+  if (!raw) return 0;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+  return value;
+}
+
+async function collectAvailableSessions(
+  store: TimelineStore,
+  limits: { codex: number; devin: number },
+): Promise<void> {
+  const roots = codexRoots();
+  if (limits.codex > 0 && roots.some((root) => fs.existsSync(root))) {
+    const result = await syncCodexTimeline({ store, limit: limits.codex, roots });
     process.stdout.write(`[codex] ${result.sessions} sessions · ${result.events} events\n`);
   }
   const apiKey = process.env.DEVIN_API_KEY ?? process.env.SECRET;
   const orgId = process.env.DEVIN_ORG_ID;
-  if (apiKey && orgId) {
+  if (limits.devin > 0 && apiKey && orgId) {
     const result = await syncTimeline({
       store,
       devin: new DevinClient({ apiKey, orgId }),
       github: new GitHubClient(),
-      limit,
+      limit: limits.devin,
     });
     process.stdout.write(`[devin] ${result.sessions} sessions · ${result.events} events\n`);
   }
@@ -101,11 +120,37 @@ async function main(): Promise<void> {
   const command = process.argv[2] ?? "serve";
   const store = new TimelineStore(storePath());
 
+  if (command === "inventory") {
+    const repo = option("--repo") ?? process.env.GBIRD_REPO ?? currentRepo();
+    if (!repo) throw new Error("Pass --repo owner/repo or run gbird inside a GitHub repository.");
+    const apiKey = process.env.DEVIN_API_KEY ?? process.env.SECRET;
+    const orgId = process.env.DEVIN_ORG_ID;
+    const inventory = await inspectInventory({
+      store,
+      repo,
+      devin: apiKey && orgId ? new DevinClient({ apiKey, orgId }) : undefined,
+      codexRoots: codexRoots(),
+    });
+    process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
+    store.close();
+    return;
+  }
+
   if (command === "report") {
     const repo = option("--repo") ?? process.env.GBIRD_REPO ?? currentRepo();
     if (!repo) throw new Error("Pass --repo owner/repo or run gbird inside a GitHub repository.");
-    const limit = Number(option("--limit") ?? process.env.GBIRD_SYNC_LIMIT ?? 500);
-    if (!hasFlag("--skip-sync")) await collectAvailableSessions(store, limit);
+    if (!hasFlag("--skip-sync")) {
+      const all = hasFlag("--all");
+      const shared = option("--limit");
+      const limits = {
+        codex: selectedLimit("--codex-limit", shared, all),
+        devin: selectedLimit("--devin-limit", shared, all),
+      };
+      if (!limits.codex && !limits.devin) {
+        throw new Error("Choose the import scope with --all, --limit N, source-specific limits, or --skip-sync.");
+      }
+      await collectAvailableSessions(store, limits);
+    }
     const scope = resolveRepoScope(store, repo);
     const root = runtimeRoot();
     const record = await generateRepoReport({

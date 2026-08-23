@@ -17,11 +17,13 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
 
   const store = new TimelineStore(":memory:");
   seedDemo(store);
+  let analysisCalls = 0;
   const running = await startServer({
     store,
     port: 0,
     demo: true,
     analyzeSession: async (timeline): Promise<SessionAnalysis> => {
+      analysisCalls += 1;
       const first = timeline.events[0]!;
       const last = timeline.events.at(-1)!;
       return {
@@ -153,8 +155,9 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
 
     const filtered = await (await fetch(
       new URL("/api/sessions?repo=DevelopIQ-ai%2Fcookiejar", running.url),
-    )).json() as { sessions: Array<{ id: string }> };
+    )).json() as { sessions: Array<{ id: string; analysisStatus: string }> };
     assert.deepEqual(filtered.sessions.map((session) => session.id), ["devin-demo-cookiejar"]);
+    assert.equal(filtered.sessions[0]?.analysisStatus, "not_analyzed");
 
     const timelineResponse = await fetch(
       new URL("/api/sessions/devin-demo-cookiejar", running.url),
@@ -180,6 +183,20 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
     )).json() as { analysis: SessionAnalysis; stale: boolean };
     assert.equal(analyzed.analysis.insights[0]?.category, "premature_completion");
     assert.equal(analyzed.stale, false);
+    assert.equal(analysisCalls, 1);
+
+    const cached = await (await fetch(
+      new URL("/api/sessions/devin-demo-cookiejar/analysis", running.url),
+      { method: "POST" },
+    )).json() as { analysis: SessionAnalysis; cached: boolean };
+    assert.equal(cached.cached, true);
+    assert.equal(analysisCalls, 1);
+
+    const sessionsAfterAnalysis = await (await fetch(
+      new URL("/api/sessions?repo=DevelopIQ-ai%2Fcookiejar", running.url),
+    )).json() as { sessions: Array<{ analysisStatus: string; analysisInsightCount: number }> };
+    assert.equal(sessionsAfterAnalysis.sessions[0]?.analysisStatus, "analyzed");
+    assert.equal(sessionsAfterAnalysis.sessions[0]?.analysisInsightCount, 1);
 
     const analysisAfter = await (await fetch(
       new URL("/api/sessions/devin-demo-cookiejar/analysis", running.url),
