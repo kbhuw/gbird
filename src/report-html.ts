@@ -21,17 +21,17 @@ function failureHtml(failure: RepoFailure): string {
       <li>
         <article>
           <h2>${escapeHtml(failure.title)}</h2>
-          <p><strong>${escapeHtml(failure.severity.toUpperCase())}</strong> · ${escapeHtml(failure.classification.replace("_", " "))} · ${escapeHtml(sessionLabel)}</p>
+          <p><strong>${escapeHtml(failure.severity.toUpperCase())}</strong> · ${failure.classification === "recurring" ? `seen in ${escapeHtml(sessionLabel)}` : "seen once"}</p>
           <p>${escapeHtml(failure.summary)}</p>
 
-          <h3>Reproduction prompt</h3>
+          <h3>Test prompt</h3>
           <blockquote><p>${escapeHtml(failure.repro.prompt)}</p></blockquote>
           <p><strong>Failure if:</strong> ${escapeHtml(failure.repro.failure_condition)}</p>
 
           <details>
-            <summary>Evidence and proposed fix</summary>
+            <summary>Evidence and possible fix</summary>
             <p><strong>Success if:</strong> ${escapeHtml(failure.repro.success_condition)}</p>
-            <p><strong>Proposed fix:</strong> ${escapeHtml(failure.suggested_guardrail)}</p>
+            <p><strong>Possible fix:</strong> ${escapeHtml(failure.suggested_guardrail)}</p>
             <ol>${occurrences}
             </ol>
           </details>
@@ -57,7 +57,7 @@ export function renderRepoReportHtml(record: StoredRepoReport): string {
   <header>
     <p><a href="http://127.0.0.1:4189/">Sessions</a> · <a href="./report.json">JSON</a></p>
     <h1>${escapeHtml(report.repo)} failures</h1>
-    <p>${report.coverage.sessions_analyzed} sessions analyzed · ${report.failures.length} failures · ${recurring} recurring · ${report.coverage.included_insights}/${report.coverage.input_insights} insights included</p>
+    <p>${report.coverage.sessions_analyzed} sessions · ${report.failures.length} possible failures · ${recurring} seen more than once</p>
     ${aliases.length ? `<p>Includes previous repository name${aliases.length === 1 ? "" : "s"}: ${aliases.map(escapeHtml).join(", ")}</p>` : ""}
   </header>
   <main>
@@ -65,7 +65,7 @@ export function renderRepoReportHtml(record: StoredRepoReport): string {
     ${limitations}
   </main>
   <footer>
-    <p>Generated ${escapeHtml(new Date(record.createdAt).toLocaleString())}. Historical failures remain unvalidated until reproduced.</p>
+    <p>Generated ${escapeHtml(new Date(record.createdAt).toLocaleString())}. These are suspected problems until a fresh agent repeats them.</p>
   </footer>
 </body>
 </html>`;

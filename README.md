@@ -2,9 +2,9 @@
 
 **gbird catches slugs.**
 
-A slug is one evidence-backed place where a coding-agent session wasted work, failed, looped, misunderstood a requirement, or needed a user correction.
+A slug is one evidence-backed place where a coding agent wasted work, looped, used the wrong command, searched badly, ignored an instruction, or needed a correction.
 
-gbird ingests Codex and Devin sessions into a repo-filtered timeline, joins them with GitHub PRs, commits, CI checks, reviews, and Greptile comments, then analyzes each session chronologically to catch slugs. It groups equivalent findings for one repository and produces a readable failure report with exact evidence and a neutral latest-code reproduction prompt for every failure.
+gbird ingests Codex and Devin sessions into a repo-filtered timeline, joins them with GitHub PRs, commits, CI checks, reviews, and Greptile comments, then walks each session in order to catch slugs. It reports failures in how the agent worked, not bugs in the code—that is Greptile's job. It then groups similar agent failures and writes a plain-English report with exact evidence and a neutral test prompt for each one.
 
 ## Run the UI with demo data
 

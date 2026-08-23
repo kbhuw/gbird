@@ -203,8 +203,8 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
       new URL("/report?repo=DevelopIQ-ai%2Fcookiejar", running.url),
     )).text();
     assert.ok(reportPage.includes("DevelopIQ-ai/cookiejar failures"));
-    assert.ok(reportPage.includes("Reproduction prompt"));
-    assert.ok(reportPage.includes("Evidence and proposed fix"));
+    assert.ok(reportPage.includes("Test prompt"));
+    assert.ok(reportPage.includes("Evidence and possible fix"));
     assert.equal(reportPage.includes("<script>"), false);
     assert.equal(reportPage.includes("<style>"), false);
 

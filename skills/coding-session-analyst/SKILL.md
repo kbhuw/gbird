@@ -1,12 +1,29 @@
 ---
 name: coding-session-analyst
 description: Analyze structured Codex, Devin, Claude Code, Cursor, or other coding-agent session transcripts one session at a time. Use this whenever the user wants to find where a coding agent failed, wasted tokens or time, looped, churned, misunderstood requirements, used tools poorly, validated inadequately, stopped prematurely, or needs evidence-backed hypotheses and replay tests. Also use for repo-scoped session audits and failure analysis even when the user does not explicitly say "transcript analysis." Do not use for ordinary code review or transcript parsing alone.
-compatibility: Requires local file access and jq for JSON or JSONL inspection. Node.js is required for the bundled validator.
 ---
 
 # Coding Session Analyst
 
 Analyze one normalized coding-agent session as an ordered execution trace. The goal is to find specific places where the session became less effective, quantify the avoidable work when the data permits it, and turn each supported observation into a testable failure hypothesis.
+
+## Scope: analyze the agent, not its code
+
+Keep only failures in how the coding agent worked with the repository. Examples:
+
+- ran the wrong command or repeated a failed command without learning anything;
+- searched the wrong place or took an avoidable detour before finding the right file;
+- ignored repository instructions or an explicit user requirement;
+- repeated, reverted, or replaced work that could have been avoided;
+- used a tool poorly, skipped an available check, or claimed completion too early;
+- needed the user or reviewer to correct an approach the transcript shows it could have caught earlier.
+
+Do not report a functional bug, missing feature, security issue, bad architecture choice, failed test, CI error, or Greptile finding by itself. Greptile owns code review. Such events are evidence only when they prove a specific avoidable behavior by the agent. For example:
+
+- out of scope: "The code removed an authorization check."
+- in scope: "The agent edited authorization code without first reading the repository's existing authorization pattern, then needed three review rounds to repair it."
+
+Every retained insight must answer: **what did the agent do that wasted time or caused avoidable rework?** If the transcript cannot answer that, drop the insight.
 
 This skill generates hypotheses from historical evidence. It does not prove that a failure still exists. Proof comes later from a fresh-agent replay in a clean Daytona sandbox.
 
@@ -88,6 +105,8 @@ Common signals include:
 - solving a different problem from the one requested;
 - a tool, permission, environment, or repository setup problem that dominates the run.
 
+A code-review comment is not automatically a signal. Identify the agent action that led to avoidable work. If only the code defect is visible and the transcript does not show the agent's process mistake, leave it to Greptile and do not retain it.
+
 Necessary exploration is not waste merely because it takes time. A retry after changed inputs or new evidence may be progress. Judge the sequence, not isolated events.
 
 ### 4. Measure waste without fake precision
@@ -137,6 +156,8 @@ The replay must specify:
 - the observable failure condition;
 - the observable success condition.
 
+The replay must test the fresh agent's behavior. Observe its commands, searches, tool choices, retries, corrections, checks, and completion claim. Do not use final code correctness as the only failure condition.
+
 Do not bake the historical evidence, hypothesis, answer, or proposed fix into the replay prompt. The point is to see whether the failure naturally repeats.
 
 If the hypothesis cannot be isolated in a fresh session, set `replay` to `null` and explain why in `counterevidence` or `limitations`.
@@ -162,6 +183,8 @@ Every insight must separate:
 - `evidence`: exact transcript events supporting the observation.
 
 Evidence summaries should be short and factual. Quote only the minimum useful text. Never expose secrets, credentials, hidden reasoning, or large raw tool payloads.
+
+Write titles, observations, hypotheses, and replay conditions in short, plain English. Describe literal actions. Avoid abstract engineering jargon.
 
 An event occurring before a failure does not by itself establish causality. Phrase unsupported causal claims as hypotheses.
 

@@ -7,6 +7,8 @@ description: Generate a complete, repo-scoped coding-agent failure report from a
 
 Run the bundled gbird engine for one repository. It discovers available Codex and Devin sessions, normalizes them, analyzes every matching session, groups equivalent historical failures, and writes one HTML report plus its evidence-preserving JSON source.
 
+gbird analyzes the coding agent's behavior, not functional bugs in its code. Greptile owns code review. gbird looks for wrong commands, wasted searches, repeated work, ignored instructions, avoidable detours, poor tool use, skipped checks, user corrections, and early completion claims.
+
 ## Workflow
 
 1. Resolve the repository from an explicit `owner/repo` supplied by the user. Otherwise read the current checkout's `origin` remote. Do not guess when neither exists.
@@ -29,10 +31,12 @@ The script path above is relative to this `SKILL.md`, not the user's repository.
 - Call a group recurring only when it appears in at least two distinct sessions.
 - Preserve exact session and event references.
 - Never invent token or time measurements.
+- Exclude code defects that do not prove a specific avoidable action by the coding agent.
+- Write the report in short, plain English and describe literal agent actions.
 - Treat every listed item as a historical failure hypothesis until a fresh replay reproduces it.
 
 ## Reproduction prompts
 
-Every failure must include one natural prompt for a fresh coding agent running against the latest repository checkout. Keep that prompt neutral. Do not reveal the historical failure, suspected cause, correct command, expected answer, or suggested guardrail. Put those details only in the separate failure and success conditions.
+Every failure must include one natural prompt for a fresh coding agent running against the latest repository checkout. Keep that prompt neutral. Do not reveal the historical failure, suspected cause, correct command, expected answer, or suggested guardrail. Put those details only in the separate failure and success conditions. The replay must test the fresh agent's behavior, not only whether its final code works.
 
 Do not execute Daytona validation in this workflow. This skill generates the prompts and observable conditions that a later validator will run.

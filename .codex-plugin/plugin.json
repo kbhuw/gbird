@@ -1,6 +1,6 @@
 {
   "name": "gbird",
-  "version": "0.1.0+codex.20260823214310",
+  "version": "0.1.0+codex.20260823220743",
   "description": "Generate evidence-backed coding-agent failure reports for a repository.",
   "author": {
     "name": "Kush Bhuwalka"
