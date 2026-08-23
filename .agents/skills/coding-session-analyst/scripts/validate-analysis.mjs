@@ -79,12 +79,8 @@ if (analysis.totals && !timeModes.has(analysis.totals.time_measurement)) errors.
 if (analysis.totals?.wasted_tokens !== null && analysis.totals?.token_measurement === "unavailable") errors.push("non-null total wasted_tokens cannot be unavailable");
 if (analysis.totals?.wasted_seconds !== null && analysis.totals?.time_measurement === "unavailable") errors.push("non-null total wasted_seconds cannot be unavailable");
 if ((analysis.insights ?? []).length === 0) {
-  if (analysis.totals?.wasted_tokens !== 0 || analysis.totals?.token_measurement !== "exact") {
-    errors.push("an analysis with no insights must report exact zero wasted_tokens");
-  }
-  if (analysis.totals?.wasted_seconds !== 0 || analysis.totals?.time_measurement !== "exact") {
-    errors.push("an analysis with no insights must report exact zero wasted_seconds");
-  }
+  if (analysis.totals?.wasted_tokens !== 0 || analysis.totals?.token_measurement !== "exact") errors.push("an analysis with no insights must report exact zero wasted_tokens");
+  if (analysis.totals?.wasted_seconds !== 0 || analysis.totals?.time_measurement !== "exact") errors.push("an analysis with no insights must report exact zero wasted_seconds");
 }
 
 if (errors.length) {

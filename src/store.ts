@@ -1,7 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentKind, NormalizedSession, SessionTimeline, TimelineEvent } from "./schema.js";
+import type {
+  AgentKind,
+  NormalizedSession,
+  SessionAnalysis,
+  SessionTimeline,
+  StoredSessionAnalysis,
+  TimelineEvent,
+} from "./schema.js";
 
 export interface SessionListItem extends NormalizedSession {
   eventCount: number;
@@ -59,6 +66,14 @@ export class TimelineStore {
         path TEXT,
         url TEXT,
         event_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS session_analyses (
+        session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+        input_hash TEXT NOT NULL,
+        analyzer TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        analysis_json TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS events_session_time
@@ -233,6 +248,46 @@ export class TimelineStore {
     return {
       session: { ...(JSON.parse(row.session_json) as NormalizedSession), agent: row.agent },
       events: eventRows.map((event) => JSON.parse(event.event_json) as TimelineEvent),
+    };
+  }
+
+  upsertAnalysis(record: StoredSessionAnalysis): void {
+    this.db.prepare(`
+      INSERT INTO session_analyses (
+        session_id, input_hash, analyzer, created_at, analysis_json
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        input_hash = excluded.input_hash,
+        analyzer = excluded.analyzer,
+        created_at = excluded.created_at,
+        analysis_json = excluded.analysis_json
+    `).run(
+      record.sessionId,
+      record.inputHash,
+      record.analyzer,
+      record.createdAt,
+      JSON.stringify(record.analysis),
+    );
+  }
+
+  getAnalysis(sessionId: string): StoredSessionAnalysis | null {
+    const row = this.db.prepare(`
+      SELECT input_hash, analyzer, created_at, analysis_json
+      FROM session_analyses
+      WHERE session_id = ?
+    `).get(sessionId) as {
+      input_hash: string;
+      analyzer: string;
+      created_at: string;
+      analysis_json: string;
+    } | undefined;
+    if (!row) return null;
+    return {
+      sessionId,
+      inputHash: row.input_hash,
+      analyzer: row.analyzer,
+      createdAt: row.created_at,
+      analysis: JSON.parse(row.analysis_json) as SessionAnalysis,
     };
   }
 

@@ -3,6 +3,12 @@ import fs from "node:fs";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import {
+  codexSkillAvailable,
+  createCodexSkillAnalyzer,
+  timelineHash,
+  type AnalyzeSession,
+} from "./analyzer.js";
 import { syncCodexTimeline, type CodexSyncSummary } from "./codex.js";
 import { DevinClient } from "./devin.js";
 import { GitHubClient } from "./github.js";
@@ -17,6 +23,8 @@ export interface ServerOptions {
   syncLimit?: number;
   codexSyncLimit?: number;
   demo?: boolean;
+  analyzeSession?: AnalyzeSession;
+  projectRoot?: string;
 }
 
 export interface RunningServer {
@@ -69,14 +77,24 @@ function requestedAgent(url: URL): AgentKind | undefined {
   return value === "codex" || value === "devin" ? value : undefined;
 }
 
+function sameOrigin(request: IncomingMessage, url: URL): boolean {
+  const origin = request.headers.origin;
+  return !origin || new URL(origin).host === url.host;
+}
+
 export async function startServer(options: ServerOptions): Promise<RunningServer> {
   const host = options.host ?? "127.0.0.1";
   const uiPath = path.join(import.meta.dirname, "ui", "index.html");
+  const aboutPath = path.join(import.meta.dirname, "ui", "about.html");
   const hasGithub = githubAvailable();
   const codexRoot = process.env.CODEX_SESSIONS_ROOT ?? path.join(os.homedir(), ".codex", "sessions");
   const hasCodex = fs.existsSync(codexRoot);
+  const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
+  const hasAnalyzer = Boolean(options.analyzeSession) || codexSkillAvailable({ projectRoot });
+  const analyzeSession = options.analyzeSession ?? createCodexSkillAnalyzer({ projectRoot });
   let activeDevinSync: Promise<SyncSummary> | null = null;
   let activeCodexSync: Promise<CodexSyncSummary> | null = null;
+  const activeAnalyses = new Map<string, Promise<ReturnType<TimelineStore["getAnalysis"]>>>();
 
   const runDevinSync = (): Promise<SyncSummary> => {
     if (activeDevinSync) return activeDevinSync;
@@ -127,11 +145,17 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/about") {
+        text(response, 200, fs.readFileSync(aboutPath, "utf8"), "text/html; charset=utf-8");
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/state") {
         json(response, 200, {
           configured: Boolean(devinApiKey() && process.env.DEVIN_ORG_ID),
           codexConfigured: hasCodex,
           githubConfigured: hasGithub,
+          analysisConfigured: hasAnalyzer,
           syncing: Boolean(activeDevinSync || activeCodexSync),
           syncingAgent: activeCodexSync ? "codex" : activeDevinSync ? "devin" : null,
           demo: Boolean(options.demo),
@@ -177,6 +201,62 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         return;
       }
 
+      const analysisMatch = /^\/api\/sessions\/([^/]+)\/analysis$/.exec(url.pathname);
+      if ((request.method === "GET" || request.method === "POST") && analysisMatch?.[1]) {
+        const id = decodeURIComponent(analysisMatch[1]);
+        const timeline = options.store.getTimeline(id);
+        if (!timeline) {
+          json(response, 404, { error: "Session not found." });
+          return;
+        }
+        const inputHash = timelineHash(timeline);
+        if (request.method === "GET") {
+          const stored = options.store.getAnalysis(id);
+          json(response, 200, {
+            analysis: stored?.analysis ?? null,
+            createdAt: stored?.createdAt ?? null,
+            analyzer: stored?.analyzer ?? null,
+            stale: Boolean(stored && stored.inputHash !== inputHash),
+          });
+          return;
+        }
+        if (!sameOrigin(request, url)) {
+          json(response, 403, { error: "Cross-origin requests are not allowed." });
+          return;
+        }
+        if (!hasAnalyzer) {
+          json(response, 503, { error: "The coding-session-analyst skill or Codex CLI is not available." });
+          return;
+        }
+        let active = activeAnalyses.get(id);
+        if (!active) {
+          active = analyzeSession(timeline).then((analysis) => {
+            const record = {
+              sessionId: id,
+              inputHash,
+              analyzer: "coding-session-analyst",
+              createdAt: new Date().toISOString(),
+              analysis,
+            };
+            options.store.upsertAnalysis(record);
+            return record;
+          }).finally(() => activeAnalyses.delete(id));
+          activeAnalyses.set(id, active);
+        }
+        try {
+          const stored = await active;
+          json(response, 200, {
+            analysis: stored?.analysis ?? null,
+            createdAt: stored?.createdAt ?? null,
+            analyzer: stored?.analyzer ?? null,
+            stale: false,
+          });
+        } catch (error) {
+          json(response, 503, { error: error instanceof Error ? error.message : String(error) });
+        }
+        return;
+      }
+
       const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && sessionMatch?.[1]) {
         const timeline = options.store.getTimeline(decodeURIComponent(sessionMatch[1]));
@@ -189,8 +269,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       }
 
       if (request.method === "POST" && url.pathname === "/api/sync") {
-        const origin = request.headers.origin;
-        if (origin && new URL(origin).host !== url.host) {
+        if (!sameOrigin(request, url)) {
           json(response, 403, { error: "Cross-origin requests are not allowed." });
           return;
         }

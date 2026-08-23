@@ -17,6 +17,8 @@ npm run dev
 
 Open `http://127.0.0.1:4189`.
 
+The product site is available at `http://127.0.0.1:4189/about`; the session dashboard remains at `/`.
+
 ## Import real sessions
 
 Import the 50 most recent local Codex tasks:
@@ -67,3 +69,11 @@ Each session can be downloaded from the UI as JSON:
   ]
 }
 ```
+
+## Failure hypotheses
+
+Open a session and press **Analyze**. gbird gives that session's normalized JSON timeline to the bundled `coding-session-analyst` skill through an ephemeral, read-only Codex run. The result is stored in SQLite and shown above the event timeline.
+
+Each hypothesis contains exact evidence event IDs, conservative token/time accounting, counterevidence, and a neutral replay specification. Evidence buttons jump to the supporting timeline node.
+
+This stage does not claim a recurring failure. A later validator will run the replay task with a fresh coding agent in a clean Daytona sandbox and classify it as `reproduced`, `not_reproduced`, or `inconclusive`.

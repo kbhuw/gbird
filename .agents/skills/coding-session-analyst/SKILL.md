@@ -167,22 +167,14 @@ An event occurring before a failure does not by itself establish causality. Phra
 
 ## Output
 
-Read [references/analysis-schema.md](references/analysis-schema.md), then write a single JSON object matching it. Save the result as `session-analysis.json` unless the user provides another path.
+Read [references/analysis-schema.md](references/analysis-schema.md), then return a single JSON object matching it. When the host supplies an output schema, return the JSON as the final response and let the host validate it. Otherwise save it as `session-analysis.json` and run the bundled validator.
 
-After writing the analysis, validate it:
-
-```bash
-node scripts/validate-analysis.mjs <transcript.json-or-jsonl> <session-analysis.json>
-```
-
-Fix validation errors before returning the result.
-
-Return a compact human summary containing:
+Return a compact human summary only when the host does not require JSON-only output. The summary should contain:
 
 - session outcome;
-- number of retained insights (slugs);
+- number of retained insights;
 - measured waste, explicitly noting unavailable coverage;
 - the strongest insight and its replay test;
-- the saved analysis path.
+- the saved analysis path when one exists.
 
 Do not turn normal agent activity into pathology. Do not invent measurements to make the report look complete.

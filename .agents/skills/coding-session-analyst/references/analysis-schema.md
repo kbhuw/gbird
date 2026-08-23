@@ -78,7 +78,7 @@ Write one JSON object with this structure:
 - If avoidable work exists but its duration cannot be attributed, use `wasted_seconds: null` with `time_measurement: "unavailable"`, not zero.
 - `replay` may be `null` when the hypothesis cannot be isolated in a fresh coding session.
 - `replay` is an unexecuted test specification. Its presence does not mean the hypothesis was reproduced.
-- Store replay evidence in a separate validation result that references `session_id` and the insight `id`; do not rewrite historical observations to make the hypothesis look confirmed.
+- Store Daytona replay evidence separately; do not rewrite historical observations to make a hypothesis look confirmed.
 
 ## Outcome guidance
 

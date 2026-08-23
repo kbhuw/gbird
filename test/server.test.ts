@@ -3,6 +3,7 @@ import test from "node:test";
 import { seedDemo } from "../src/demo.js";
 import { startServer } from "../src/server.js";
 import { TimelineStore } from "../src/store.js";
+import type { SessionAnalysis } from "../src/schema.js";
 
 test("serves the Cookiejar-style repo-filtered session timeline", async () => {
   const priorKey = process.env.DEVIN_API_KEY;
@@ -16,7 +17,57 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
 
   const store = new TimelineStore(":memory:");
   seedDemo(store);
-  const running = await startServer({ store, port: 0, demo: true });
+  const running = await startServer({
+    store,
+    port: 0,
+    demo: true,
+    analyzeSession: async (timeline): Promise<SessionAnalysis> => {
+      const first = timeline.events[0]!;
+      const last = timeline.events.at(-1)!;
+      return {
+        analysis_schema_version: 1,
+        session_id: timeline.session.id,
+        repo: timeline.session.repositories[0] ?? null,
+        outcome: { status: "partial", summary: "A review finding remained.", evidence_event_ids: [last.id] },
+        coverage: {
+          events_total: timeline.events.length,
+          events_reviewed: timeline.events.length,
+          events_with_token_usage: 0,
+          events_with_timing: timeline.events.length,
+          limitations: ["No event-level token usage."],
+        },
+        insights: [{
+          id: "insight-001",
+          category: "premature_completion",
+          title: "Completion preceded final review evidence",
+          severity: "high",
+          confidence: 0.95,
+          observed: "The session claimed completion before the later review event.",
+          why_it_matters: "The pull request was not ready.",
+          evidence: [
+            { event_id: first.id, occurred_at: first.occurredAt, kind: "message", summary: first.title },
+            { event_id: last.id, occurred_at: last.occurredAt, kind: "review", summary: last.title },
+          ],
+          waste: { tokens: null, token_measurement: "unavailable", seconds: null, time_measurement: "unavailable", event_ids: [first.id, last.id] },
+          hypothesis: "The agent may rely on a completion claim before checking the latest review state.",
+          counterevidence: [],
+          replay: {
+            task: "Assess whether this pull request is ready to merge.",
+            setup: ["Provide a current review finding."],
+            failure_condition: "The agent reports ready while the finding remains.",
+            success_condition: "The agent identifies the unresolved finding.",
+          },
+        }],
+        totals: {
+          wasted_tokens: null,
+          token_measurement: "unavailable",
+          wasted_seconds: null,
+          time_measurement: "unavailable",
+          notes: [],
+        },
+      };
+    },
+  });
 
   try {
     const html = await (await fetch(running.url)).text();
@@ -36,15 +87,24 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
     assert.ok(html.includes("pr-comment"));
     assert.ok(html.includes("eventPrNumber"));
     assert.ok(html.includes("Normalized data"));
+    assert.ok(html.includes("Analyze"));
+    assert.ok(html.includes("Failure hypotheses"));
+
+    const about = await (await fetch(new URL("/about", running.url))).text();
+    assert.ok(about.includes("Coding agents leave a trail"));
+    assert.ok(about.includes("Receipts or it isn’t a slug"));
+    assert.ok(about.includes("href=\"/\""));
 
     const state = await (await fetch(new URL("/api/state", running.url))).json() as {
       configured: boolean;
       demo: boolean;
       sessionCount: number;
+      analysisConfigured: boolean;
     };
     assert.equal(state.configured, false);
     assert.equal(state.demo, true);
     assert.equal(state.sessionCount, 3);
+    assert.equal(state.analysisConfigured, true);
 
     const filtered = await (await fetch(
       new URL("/api/sessions?repo=DevelopIQ-ai%2Fcookiejar", running.url),
@@ -63,6 +123,23 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
     );
     assert.match(exported.headers.get("content-disposition") ?? "", /attachment/);
     assert.ok((await exported.text()).includes("\"schemaVersion\": 1"));
+
+    const analysisBefore = await (await fetch(
+      new URL("/api/sessions/devin-demo-cookiejar/analysis", running.url),
+    )).json() as { analysis: SessionAnalysis | null };
+    assert.equal(analysisBefore.analysis, null);
+
+    const analyzed = await (await fetch(
+      new URL("/api/sessions/devin-demo-cookiejar/analysis", running.url),
+      { method: "POST" },
+    )).json() as { analysis: SessionAnalysis; stale: boolean };
+    assert.equal(analyzed.analysis.insights[0]?.category, "premature_completion");
+    assert.equal(analyzed.stale, false);
+
+    const analysisAfter = await (await fetch(
+      new URL("/api/sessions/devin-demo-cookiejar/analysis", running.url),
+    )).json() as { analysis: SessionAnalysis | null };
+    assert.equal(analysisAfter.analysis?.session_id, "devin-demo-cookiejar");
 
     const sync = await fetch(new URL("/api/sync", running.url), { method: "POST" });
     assert.equal(sync.status, 503);

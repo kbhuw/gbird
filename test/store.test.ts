@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { seedDemo } from "../src/demo.js";
 import { TimelineStore } from "../src/store.js";
+import type { SessionAnalysis } from "../src/schema.js";
 
 test("filters sessions repo by repo and returns ordered timelines", () => {
   const store = new TimelineStore(":memory:");
@@ -24,5 +25,35 @@ test("filters sessions repo by repo and returns ordered timelines", () => {
     [...timeline.events].map((event) => event.occurredAt).sort(),
   );
   assert.ok(timeline.events.some((event) => event.status === "failure"));
+
+  const analysis: SessionAnalysis = {
+    analysis_schema_version: 1,
+    session_id: timeline.session.id,
+    repo: timeline.session.repositories[0] ?? null,
+    outcome: { status: "partial", summary: "Demo outcome", evidence_event_ids: [timeline.events.at(-1)?.id ?? timeline.events[0]!.id] },
+    coverage: {
+      events_total: timeline.events.length,
+      events_reviewed: timeline.events.length,
+      events_with_token_usage: 0,
+      events_with_timing: timeline.events.length,
+      limitations: ["Demo data has no token usage."],
+    },
+    insights: [],
+    totals: {
+      wasted_tokens: 0,
+      token_measurement: "exact",
+      wasted_seconds: 0,
+      time_measurement: "exact",
+      notes: [],
+    },
+  };
+  store.upsertAnalysis({
+    sessionId: timeline.session.id,
+    inputHash: "timeline-hash",
+    analyzer: "coding-session-analyst",
+    createdAt: "2026-08-23T12:00:00.000Z",
+    analysis,
+  });
+  assert.deepEqual(store.getAnalysis(timeline.session.id)?.analysis, analysis);
   store.close();
 });

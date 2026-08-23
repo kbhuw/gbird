@@ -380,13 +380,16 @@
         min-height: 44px;
         margin-top: -13px;
         padding: 12px;
+        border: 0;
+        background: transparent;
         color: var(--muted);
         font-size: 11px;
         text-decoration: none;
       }
 
       .dialog-close { margin-right: -12px; }
-      .dialog-close:hover, .dialog-link:hover { color: var(--foreground); }
+      .dialog-close:hover, .dialog-link:hover:not([disabled]) { color: var(--foreground); }
+      .dialog-link[disabled] { cursor: default; opacity: .45; }
 
       h2 {
         margin: 12px 0 0;
@@ -417,6 +420,146 @@
       }
 
       .dialog-links a:hover { color: var(--foreground); }
+
+      .analysis-panel {
+        padding: 20px 32px 22px;
+        border-top: 1px solid var(--rule);
+        border-bottom: 1px solid var(--rule);
+        background: #fafaf8;
+      }
+
+      .analysis-panel[aria-busy="true"] { color: var(--muted); }
+
+      .analysis-head,
+      .analysis-summary-row,
+      .insight-summary {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .analysis-label,
+      .analysis-state,
+      .analysis-meta,
+      .insight-severity,
+      .evidence-button,
+      .replay-label {
+        font-family: var(--mono);
+      }
+
+      .analysis-label {
+        margin: 0;
+        font-size: 9px;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+
+      .analysis-state {
+        color: var(--status-open);
+        font-size: 9px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .analysis-meta,
+      .analysis-empty {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.55;
+      }
+
+      .analysis-error {
+        margin: 9px 0 0;
+        color: var(--danger);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .insight-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .insight-card {
+        border-top: 1px solid var(--rule);
+      }
+
+      .insight-card:last-child { border-bottom: 1px solid var(--rule); }
+
+      .insight-summary {
+        min-height: 46px;
+        padding: 11px 0;
+        cursor: pointer;
+        list-style: none;
+      }
+
+      .insight-summary::-webkit-details-marker { display: none; }
+      .insight-summary::after { content: "+"; color: var(--muted); font-family: var(--mono); }
+      .insight-card[open] > .insight-summary::after { content: "−"; }
+
+      .insight-title {
+        flex: 1;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.45;
+      }
+
+      .insight-severity {
+        flex: none;
+        color: var(--muted);
+        font-size: 8px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .insight-severity[data-severity="high"],
+      .insight-severity[data-severity="critical"] { color: var(--danger); }
+
+      .insight-body { padding: 0 0 18px; }
+
+      .insight-copy {
+        margin: 10px 0 0;
+        color: #3f3f3b;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .replay-label {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 8px;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+      }
+
+      .evidence-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+      }
+
+      .evidence-button {
+        min-height: 30px;
+        padding: 5px 8px;
+        border: 1px solid var(--rule);
+        border-radius: 5px;
+        background: var(--background);
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      .evidence-button:hover { border-color: var(--muted); color: var(--foreground); }
+
+      .replay-block {
+        margin-top: 14px;
+        padding: 12px;
+        background: var(--background);
+      }
 
       .event-list {
         max-height: calc(78vh - 230px);
@@ -776,6 +919,7 @@
           margin-left: -20px;
         }
         .timeline-scroll { padding-right: 20px; padding-left: 20px; }
+        .analysis-panel { padding-right: 20px; padding-left: 20px; }
         .timeline-track { grid-auto-columns: 112px; }
         .event-detail { padding-right: 20px; padding-left: 20px; }
         footer { margin-top: 64px; }
@@ -819,7 +963,7 @@
       <footer class="shell">
         <div class="footer-row">
           <span>© 2026</span>
-          <span>Repo filtered</span>
+          <a href="/about">About gbird</a>
         </div>
       </footer>
     </div>
@@ -837,6 +981,7 @@
           <div class="dialog-top">
             <p class="eyebrow" id="dialog-kicker">Session</p>
             <div class="dialog-actions">
+              <button class="dialog-link" id="analyze-session" type="button">Analyze</button>
               <a class="dialog-link" id="download-json" href="#" download>JSON</a>
               <button class="dialog-close" id="dialog-close" type="button">Close</button>
             </div>
@@ -859,6 +1004,9 @@
         repos: [],
         sessions: [],
         timeline: null,
+        analysisRecord: null,
+        analysisError: "",
+        analyzing: false,
         selectedEventIndex: 0,
         trigger: null,
         request: 0,
@@ -1281,6 +1429,112 @@
         ]);
       }
 
+      function formatWaste(analysis) {
+        const totals = analysis.totals;
+        const tokens = totals.wasted_tokens === null
+          ? "tokens unavailable"
+          : totals.wasted_tokens.toLocaleString() + " wasted tokens";
+        const time = totals.wasted_seconds === null
+          ? "time unavailable"
+          : Math.round(totals.wasted_seconds).toLocaleString() + " wasted seconds";
+        return tokens + " · " + time;
+      }
+
+      function renderAnalysisPanel() {
+        if (state.analyzing) {
+          return el("section", {
+            class: "analysis-panel",
+            "aria-busy": "true",
+            "aria-live": "polite",
+          }, [
+            el("div", { class: "analysis-head" }, [
+              el("h3", { class: "analysis-label", text: "Failure hypotheses" }),
+              el("span", { class: "analysis-state", text: "Analyzing" }),
+            ]),
+            el("p", { class: "analysis-empty", text: "Walking every normalized event in order…" }),
+          ]);
+        }
+
+        const record = state.analysisRecord;
+        const analysis = record?.analysis;
+        if (!analysis) {
+          return el("section", { class: "analysis-panel", "aria-live": "polite" }, [
+            el("div", { class: "analysis-head" }, [
+              el("h3", { class: "analysis-label", text: "Failure hypotheses" }),
+              el("span", { class: "analysis-state", text: "Not analyzed" }),
+            ]),
+            el("p", {
+              class: "analysis-empty",
+              text: state.analysisError || "Run the analyst against this session's normalized event timeline.",
+            }),
+          ]);
+        }
+
+        const insights = analysis.insights || [];
+        const stateText = record.stale ? "Stale · unvalidated" : "Unvalidated";
+        const created = record.createdAt ? " · " + fullDateText(record.createdAt) : "";
+        const cards = insights.map((insight, index) => el("details", {
+          class: "insight-card",
+          ...(index === 0 ? { open: "" } : {}),
+        }, [
+          el("summary", { class: "insight-summary" }, [
+            el("span", { class: "insight-title", text: insight.title }),
+            el("span", {
+              class: "insight-severity",
+              "data-severity": insight.severity,
+              text: insight.severity + " · " + Math.round(insight.confidence * 100) + "%",
+            }),
+          ]),
+          el("div", { class: "insight-body" }, [
+            el("p", { class: "insight-copy" }, [
+              el("span", { class: "replay-label", text: "Observed" }),
+              document.createTextNode(insight.observed),
+            ]),
+            el("p", { class: "insight-copy" }, [
+              el("span", { class: "replay-label", text: "Hypothesis" }),
+              document.createTextNode(insight.hypothesis),
+            ]),
+            el("div", { class: "evidence-list", "aria-label": "Evidence events" }, insight.evidence.map((evidence) =>
+              el("button", {
+                class: "evidence-button",
+                type: "button",
+                text: evidence.event_id,
+                title: evidence.summary,
+                onclick: () => {
+                  const eventIndex = state.timeline?.events.findIndex((event) => event.id === evidence.event_id) ?? -1;
+                  if (eventIndex >= 0) selectTimelineEvent(eventIndex, { focus: true });
+                },
+              })
+            )),
+            insight.replay ? el("div", { class: "replay-block" }, [
+              el("p", { class: "insight-copy" }, [
+                el("span", { class: "replay-label", text: "Daytona replay task" }),
+                document.createTextNode(insight.replay.task),
+              ]),
+              el("p", { class: "insight-copy" }, [
+                el("span", { class: "replay-label", text: "Failure condition" }),
+                document.createTextNode(insight.replay.failure_condition),
+              ]),
+            ]) : null,
+          ]),
+        ]));
+
+        return el("section", { class: "analysis-panel", "aria-live": "polite" }, [
+          el("div", { class: "analysis-head" }, [
+            el("h3", { class: "analysis-label", text: "Failure hypotheses" }),
+            el("span", { class: "analysis-state", text: stateText }),
+          ]),
+          el("p", {
+            class: "analysis-meta",
+            text: plural(insights.length, "hypothesis") + " · " + formatWaste(analysis) + created,
+          }),
+          state.analysisError ? el("p", { class: "analysis-error", text: state.analysisError }) : null,
+          insights.length
+            ? el("div", { class: "insight-list" }, cards)
+            : el("p", { class: "analysis-empty", text: "No evidence-backed failure hypothesis survived the skeptical pass." }),
+        ]);
+      }
+
       function selectTimelineEvent(index, options) {
         const timeline = state.timeline;
         if (!timeline || !timeline.events[index]) return;
@@ -1316,6 +1570,15 @@
         if (!timeline) return;
         const { session, events } = timeline;
         const repo = state.repo || session.repositories[0] || "Unlinked";
+        $("analyze-session").disabled = state.analyzing || !state.app?.analysisConfigured;
+        $("analyze-session").textContent = state.analyzing
+          ? "Analyzing…"
+          : state.analysisRecord?.analysis
+            ? "Re-analyze"
+            : "Analyze";
+        $("analyze-session").title = state.app?.analysisConfigured
+          ? "Generate failure hypotheses from this normalized session"
+          : "The coding-session-analyst skill is unavailable";
         $("dialog-kicker").textContent = repo + " · " + session.agent;
         $("dialog-title").textContent = session.title;
         const summary = [
@@ -1339,7 +1602,10 @@
         $("dialog-links").replaceChildren(...links);
 
         if (!events.length) {
-          $("events").replaceChildren(el("p", { class: "empty", text: "No normalized events." }));
+          $("events").replaceChildren(
+            renderAnalysisPanel(),
+            el("p", { class: "empty", text: "No normalized events." }),
+          );
           return;
         }
         state.selectedEventIndex = Math.min(state.selectedEventIndex, events.length - 1);
@@ -1369,6 +1635,7 @@
           "aria-label": "Session event timeline",
         }, [track]);
         $("events").replaceChildren(
+          renderAnalysisPanel(),
           scroll,
           renderEventDetail(events[state.selectedEventIndex], state.selectedEventIndex, events.length),
         );
@@ -1390,6 +1657,9 @@
         const trigger = state.trigger;
         state.trigger = null;
         state.timeline = null;
+        state.analysisRecord = null;
+        state.analysisError = "";
+        state.analyzing = false;
         state.selectedEventIndex = 0;
         if (trigger && trigger.isConnected) trigger.focus();
       }
@@ -1400,11 +1670,19 @@
         $("dialog-title").textContent = "Loading session…";
         $("dialog-summary").textContent = "Reading normalized events.";
         $("dialog-links").replaceChildren();
+        state.analysisRecord = null;
+        state.analysisError = "";
+        state.analyzing = false;
         $("events").replaceChildren(el("p", { class: "empty", text: "Loading timeline…" }));
         try {
-          const timeline = await api("/api/sessions/" + encodeURIComponent(id));
+          const encoded = encodeURIComponent(id);
+          const [timeline, analysisRecord] = await Promise.all([
+            api("/api/sessions/" + encoded),
+            api("/api/sessions/" + encoded + "/analysis"),
+          ]);
           if (request !== state.request) return;
           state.timeline = timeline;
+          state.analysisRecord = analysisRecord;
           renderTimeline();
         } catch (error) {
           if (request !== state.request) return;
@@ -1458,6 +1736,27 @@
           $("result-count").textContent = error.message;
           $("sync").disabled = false;
           $("sync").textContent = "Sync";
+        }
+      });
+
+      $("analyze-session").addEventListener("click", async () => {
+        const id = state.timeline?.session.id;
+        if (!id || state.analyzing || !state.app?.analysisConfigured) return;
+        state.analyzing = true;
+        state.analysisError = "";
+        renderTimeline();
+        try {
+          const record = await api("/api/sessions/" + encodeURIComponent(id) + "/analysis", { method: "POST" });
+          if (state.timeline?.session.id !== id) return;
+          state.analysisRecord = record;
+        } catch (error) {
+          if (state.timeline?.session.id !== id) return;
+          state.analysisError = error.message;
+        } finally {
+          if (state.timeline?.session.id === id) {
+            state.analyzing = false;
+            renderTimeline();
+          }
         }
       });
 
