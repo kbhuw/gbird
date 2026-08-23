@@ -129,6 +129,70 @@ export interface StoredSessionAnalysis {
   analysis: SessionAnalysis;
 }
 
+export interface RepoAnalysisSession {
+  session: Pick<NormalizedSession, "id" | "agent" | "title" | "status" | "startedAt" | "url">;
+  analysis: SessionAnalysis;
+}
+
+export interface RepoReportInput {
+  repo: string;
+  source_repositories: string[];
+  sessions: RepoAnalysisSession[];
+}
+
+export interface RepoFailureOccurrence {
+  session_id: string;
+  session_title: string;
+  agent: AgentKind;
+  insight_id: string;
+  observed: string;
+  evidence_event_ids: string[];
+}
+
+export interface RepoFailure {
+  id: string;
+  title: string;
+  category: string;
+  severity: AnalysisSeverity;
+  confidence: number;
+  classification: "recurring" | "single_occurrence";
+  summary: string;
+  why_it_matters: string;
+  historical_session_count: number;
+  historical_occurrence_count: number;
+  occurrences: RepoFailureOccurrence[];
+  repro: {
+    prompt: string;
+    setup: string[];
+    failure_condition: string;
+    success_condition: string;
+  };
+  suggested_guardrail: string;
+}
+
+export interface RepoFailureReport {
+  report_schema_version: 1;
+  repo: string;
+  source_repositories: string[];
+  coverage: {
+    sessions_discovered: number;
+    sessions_analyzed: number;
+    sessions_with_failures: number;
+    input_insights: number;
+    included_insights: number;
+  };
+  failures: RepoFailure[];
+  limitations: string[];
+}
+
+export interface StoredRepoReport {
+  repo: string;
+  inputHash: string;
+  analyzer: string;
+  createdAt: string;
+  report: RepoFailureReport;
+}
+
 export function stableId(...parts: Array<string | number | null | undefined>): string {
   return createHash("sha256")
     .update(parts.map((part) => part ?? "").join("\u001f"))

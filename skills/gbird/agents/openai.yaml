@@ -1,0 +1,4 @@
+interface:
+  display_name: "gbird"
+  short_description: "Generate coding-agent failure reports"
+  default_prompt: "Use $gbird to analyze this repository’s coding-agent sessions and generate its failure report."

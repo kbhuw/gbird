@@ -2,16 +2,24 @@ import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import type { SessionAnalysis, SessionTimeline } from "./schema.js";
-
-const execFileAsync = promisify(execFile);
 
 export interface AnalyzerOptions {
   projectRoot?: string;
+  skillPath?: string;
   executable?: string;
   model?: string;
   timeoutMs?: number;
+}
+
+function bundledSkillPath(projectRoot: string, explicit?: string): string {
+  if (explicit) return path.resolve(explicit);
+  const candidates = [
+    path.join(projectRoot, ".agents", "skills", "coding-session-analyst"),
+    path.join(projectRoot, "skills", "coding-session-analyst"),
+    path.join(projectRoot, "runtime", "coding-session-analyst"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(path.join(candidate, "SKILL.md"))) ?? candidates[0]!;
 }
 
 export type AnalyzeSession = (timeline: SessionTimeline) => Promise<SessionAnalysis>;
@@ -60,7 +68,7 @@ export function assertSessionAnalysis(timeline: SessionTimeline, value: unknown)
 
 export function codexSkillAvailable(options: AnalyzerOptions = {}): boolean {
   const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
-  const skill = path.join(projectRoot, ".agents", "skills", "coding-session-analyst", "SKILL.md");
+  const skill = path.join(bundledSkillPath(projectRoot, options.skillPath), "SKILL.md");
   if (!fs.existsSync(skill)) return false;
   try {
     execFileSync(options.executable ?? process.env.GBIRD_CODEX_BIN ?? "codex", ["--version"], {
@@ -79,7 +87,7 @@ export function createCodexSkillAnalyzer(options: AnalyzerOptions = {}): Analyze
   const executable = options.executable ?? process.env.GBIRD_CODEX_BIN ?? "codex";
   const model = options.model ?? process.env.GBIRD_ANALYSIS_MODEL;
   const timeoutMs = options.timeoutMs ?? Number(process.env.GBIRD_ANALYSIS_TIMEOUT_MS ?? 900_000);
-  const bundledSkill = path.join(projectRoot, ".agents", "skills", "coding-session-analyst");
+  const bundledSkill = bundledSkillPath(projectRoot, options.skillPath);
   const outputSchema = path.join(import.meta.dirname, "analysis-output.schema.json");
   const runRoot = path.join(projectRoot, ".data", "analysis-runs");
 
@@ -121,11 +129,22 @@ export function createCodexSkillAnalyzer(options: AnalyzerOptions = {}): Analyze
     args.push(prompt);
 
     try {
-      await execFileAsync(executable, args, {
-        cwd: runDir,
-        env: safeEnvironment(),
-        maxBuffer: 2_000_000,
-        timeout: timeoutMs,
+      await new Promise<void>((resolve, reject) => {
+        const child = execFile(executable, args, {
+          cwd: runDir,
+          env: safeEnvironment(),
+          maxBuffer: 2_000_000,
+          timeout: timeoutMs,
+        }, (error, _stdout, stderr) => {
+          if (!error) {
+            resolve();
+            return;
+          }
+          reject(Object.assign(error, { stderr }));
+        });
+        // `codex exec` reads stdin even when the prompt is positional. Explicitly
+        // closing the pipe prevents the child from waiting forever for EOF.
+        child.stdin?.end();
       });
       const parsed: unknown = JSON.parse(fs.readFileSync(resultPath, "utf8"));
       assertSessionAnalysis(timeline, parsed);

@@ -55,5 +55,27 @@ test("filters sessions repo by repo and returns ordered timelines", () => {
     analysis,
   });
   assert.deepEqual(store.getAnalysis(timeline.session.id)?.analysis, analysis);
+  const report = {
+    report_schema_version: 1 as const,
+    repo: "DevelopIQ-ai/puffle-app",
+    source_repositories: ["DevelopIQ-ai/puffle-app"],
+    coverage: {
+      sessions_discovered: 1,
+      sessions_analyzed: 1,
+      sessions_with_failures: 0,
+      input_insights: 0,
+      included_insights: 0,
+    },
+    failures: [],
+    limitations: ["No failure hypotheses survived analysis."],
+  };
+  store.upsertRepoReport({
+    repo: report.repo,
+    inputHash: "repo-input-hash",
+    analyzer: "gbird-repo-reporter",
+    createdAt: "2026-08-23T12:01:00.000Z",
+    report,
+  });
+  assert.deepEqual(store.getRepoReport(report.repo)?.report, report);
   store.close();
 });

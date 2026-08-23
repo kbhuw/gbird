@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { createCodexSkillAnalyzer } from "./analyzer.js";
 import { syncCodexTimeline } from "./codex.js";
 import { seedDemo } from "./demo.js";
 import { DevinClient } from "./devin.js";
 import { GitHubClient } from "./github.js";
+import { generateRepoReport } from "./repo-report.js";
+import { resolveRepoScope } from "./repo-scope.js";
+import { renderRepoReportHtml } from "./report-html.js";
+import { createCodexRepoReporter } from "./reporter.js";
 import { startServer } from "./server.js";
 import { TimelineStore } from "./store.js";
 import { syncTimeline } from "./sync.js";
@@ -39,10 +45,98 @@ function storePath(): string {
   );
 }
 
+function runtimeRoot(): string {
+  for (const candidate of [path.resolve(import.meta.dirname, ".."), path.resolve(import.meta.dirname, "..", "..")]) {
+    const hasAnalyst = [
+      path.join(candidate, "skills", "coding-session-analyst", "SKILL.md"),
+      path.join(candidate, "runtime", "coding-session-analyst", "SKILL.md"),
+    ].some((skill) => fs.existsSync(skill));
+    if (fs.existsSync(path.join(candidate, "package.json")) && hasAnalyst) {
+      return candidate;
+    }
+  }
+  return process.cwd();
+}
+
+function currentRepo(): string | undefined {
+  try {
+    const remote = execFileSync("git", ["remote", "get-url", "origin"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const match = /github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/.exec(remote);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+function reportDirectory(repo: string): string {
+  return path.resolve(option("--out") ?? process.env.GBIRD_REPORT_DIR ?? path.join(os.homedir(), ".gbird", "reports", repo.replaceAll("/", "--")));
+}
+
+async function collectAvailableSessions(store: TimelineStore, limit: number): Promise<void> {
+  const roots = process.env.CODEX_SESSIONS_ROOT
+    ? [path.resolve(process.env.CODEX_SESSIONS_ROOT)]
+    : [path.join(os.homedir(), ".codex", "sessions"), path.join(os.homedir(), ".codex", "archived_sessions")];
+  if (roots.some((root) => fs.existsSync(root))) {
+    const result = await syncCodexTimeline({ store, limit, roots });
+    process.stdout.write(`[codex] ${result.sessions} sessions · ${result.events} events\n`);
+  }
+  const apiKey = process.env.DEVIN_API_KEY ?? process.env.SECRET;
+  const orgId = process.env.DEVIN_ORG_ID;
+  if (apiKey && orgId) {
+    const result = await syncTimeline({
+      store,
+      devin: new DevinClient({ apiKey, orgId }),
+      github: new GitHubClient(),
+      limit,
+    });
+    process.stdout.write(`[devin] ${result.sessions} sessions · ${result.events} events\n`);
+  }
+}
+
 async function main(): Promise<void> {
   loadEnv();
   const command = process.argv[2] ?? "serve";
   const store = new TimelineStore(storePath());
+
+  if (command === "report") {
+    const repo = option("--repo") ?? process.env.GBIRD_REPO ?? currentRepo();
+    if (!repo) throw new Error("Pass --repo owner/repo or run gbird inside a GitHub repository.");
+    const limit = Number(option("--limit") ?? process.env.GBIRD_SYNC_LIMIT ?? 500);
+    if (!hasFlag("--skip-sync")) await collectAvailableSessions(store, limit);
+    const scope = resolveRepoScope(store, repo);
+    const root = runtimeRoot();
+    const record = await generateRepoReport({
+      store,
+      repo: scope.canonical,
+      sourceRepositories: scope.repositories,
+      analyzeSession: createCodexSkillAnalyzer({ projectRoot: root }),
+      analyzeRepo: createCodexRepoReporter({ projectRoot: root }),
+      concurrency: Number(option("--concurrency") ?? process.env.GBIRD_ANALYSIS_CONCURRENCY ?? 2),
+      onProgress: ({ phase, completed, total, title }) => {
+        process.stdout.write(`[${phase}] ${completed}/${total} ${title}\n`);
+      },
+    });
+    const output = reportDirectory(scope.canonical);
+    fs.mkdirSync(output, { recursive: true });
+    const jsonPath = path.join(output, "report.json");
+    const htmlPath = path.join(output, "report.html");
+    fs.writeFileSync(jsonPath, `${JSON.stringify(record.report, null, 2)}\n`);
+    fs.writeFileSync(htmlPath, renderRepoReportHtml(record));
+    process.stdout.write(`${JSON.stringify({
+      repo: scope.canonical,
+      sourceRepositories: scope.repositories,
+      sessionsAnalyzed: record.report.coverage.sessions_analyzed,
+      failures: record.report.failures.length,
+      recurring: record.report.failures.filter((failure) => failure.classification === "recurring").length,
+      reportJson: jsonPath,
+      reportHtml: htmlPath,
+    }, null, 2)}\n`);
+    store.close();
+    return;
+  }
 
   if (command === "sync-codex") {
     const summary = await syncCodexTimeline({
@@ -84,6 +178,7 @@ async function main(): Promise<void> {
     syncLimit: Number(option("--limit") ?? process.env.DEVIN_SYNC_LIMIT ?? 50),
     codexSyncLimit: Number(process.env.CODEX_SYNC_LIMIT ?? 50),
     demo,
+    projectRoot: runtimeRoot(),
   });
   process.stdout.write(`gbird: ${running.url}\n`);
 

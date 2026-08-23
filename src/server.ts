@@ -12,9 +12,13 @@ import {
 import { syncCodexTimeline, type CodexSyncSummary } from "./codex.js";
 import { DevinClient } from "./devin.js";
 import { GitHubClient } from "./github.js";
+import { generateRepoReport, repoReportIsStale } from "./repo-report.js";
+import { resolveRepoScope } from "./repo-scope.js";
+import { renderRepoReportHtml } from "./report-html.js";
+import { createCodexRepoReporter, type AnalyzeRepo } from "./reporter.js";
 import { TimelineStore } from "./store.js";
 import { syncTimeline, type SyncSummary } from "./sync.js";
-import type { AgentKind } from "./schema.js";
+import type { AgentKind, StoredRepoReport } from "./schema.js";
 
 export interface ServerOptions {
   store: TimelineStore;
@@ -24,6 +28,7 @@ export interface ServerOptions {
   codexSyncLimit?: number;
   demo?: boolean;
   analyzeSession?: AnalyzeSession;
+  analyzeRepo?: AnalyzeRepo;
   projectRoot?: string;
 }
 
@@ -92,9 +97,11 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
   const hasAnalyzer = Boolean(options.analyzeSession) || codexSkillAvailable({ projectRoot });
   const analyzeSession = options.analyzeSession ?? createCodexSkillAnalyzer({ projectRoot });
+  const analyzeRepo = options.analyzeRepo ?? createCodexRepoReporter({ projectRoot });
   let activeDevinSync: Promise<SyncSummary> | null = null;
   let activeCodexSync: Promise<CodexSyncSummary> | null = null;
   const activeAnalyses = new Map<string, Promise<ReturnType<TimelineStore["getAnalysis"]>>>();
+  const activeReports = new Map<string, Promise<StoredRepoReport>>();
 
   const runDevinSync = (): Promise<SyncSummary> => {
     if (activeDevinSync) return activeDevinSync;
@@ -150,12 +157,28 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/report") {
+        const repo = url.searchParams.get("repo");
+        if (!repo) {
+          text(response, 400, "Choose a repository first.");
+          return;
+        }
+        const stored = options.store.getRepoReport(repo);
+        if (!stored) {
+          text(response, 404, "No failure report has been generated for this repository.");
+          return;
+        }
+        text(response, 200, renderRepoReportHtml(stored), "text/html; charset=utf-8");
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/state") {
         json(response, 200, {
           configured: Boolean(devinApiKey() && process.env.DEVIN_ORG_ID),
           codexConfigured: hasCodex,
           githubConfigured: hasGithub,
           analysisConfigured: hasAnalyzer,
+          reportConfigured: hasAnalyzer,
           syncing: Boolean(activeDevinSync || activeCodexSync),
           syncingAgent: activeCodexSync ? "codex" : activeDevinSync ? "devin" : null,
           demo: Boolean(options.demo),
@@ -165,6 +188,71 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
             codex: options.store.countSessions("codex"),
           },
         });
+        return;
+      }
+
+      const reportExportMatch = /^\/api\/reports\/([^/]+)\/export$/.exec(url.pathname);
+      if (request.method === "GET" && reportExportMatch?.[1]) {
+        const repo = decodeURIComponent(reportExportMatch[1]);
+        const stored = options.store.getRepoReport(repo);
+        if (!stored) {
+          json(response, 404, { error: "Repo report not found." });
+          return;
+        }
+        securityHeaders(response);
+        response.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "content-disposition": `attachment; filename="${safeFilename(repo)}-gbird-report.json"`,
+        });
+        response.end(JSON.stringify(stored.report, null, 2));
+        return;
+      }
+
+      const reportMatch = /^\/api\/reports\/([^/]+)$/.exec(url.pathname);
+      if ((request.method === "GET" || request.method === "POST") && reportMatch?.[1]) {
+        const repo = decodeURIComponent(reportMatch[1]);
+        if (request.method === "GET") {
+          const stored = options.store.getRepoReport(repo);
+          json(response, 200, {
+            report: stored?.report ?? null,
+            createdAt: stored?.createdAt ?? null,
+            analyzer: stored?.analyzer ?? null,
+            stale: stored ? repoReportIsStale(options.store, stored) : false,
+          });
+          return;
+        }
+        if (!sameOrigin(request, url)) {
+          json(response, 403, { error: "Cross-origin requests are not allowed." });
+          return;
+        }
+        if (!hasAnalyzer) {
+          json(response, 503, { error: "The gbird analyzer or Codex CLI is not available." });
+          return;
+        }
+        let active = activeReports.get(repo);
+        if (!active) {
+          const scope = resolveRepoScope(options.store, repo);
+          active = generateRepoReport({
+            store: options.store,
+            repo: scope.canonical,
+            sourceRepositories: scope.repositories,
+            analyzeSession,
+            analyzeRepo,
+          }).finally(() => activeReports.delete(repo));
+          activeReports.set(repo, active);
+        }
+        try {
+          const stored = await active;
+          json(response, 200, {
+            report: stored?.report ?? null,
+            createdAt: stored?.createdAt ?? null,
+            analyzer: stored?.analyzer ?? null,
+            stale: false,
+            url: `/report?repo=${encodeURIComponent(stored.repo)}`,
+          });
+        } catch (error) {
+          json(response, 503, { error: error instanceof Error ? error.message : String(error) });
+        }
         return;
       }
 

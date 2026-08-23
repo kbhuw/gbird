@@ -98,6 +98,7 @@
       .sync-button,
       .filter-button,
       .filter-trigger,
+      .report-button,
       .event-data {
         font-family: var(--mono);
       }
@@ -162,7 +163,10 @@
 
       .filters {
         position: relative;
+        display: flex;
         width: max-content;
+        align-items: center;
+        gap: 8px;
         margin: 22px 0 0;
       }
 
@@ -186,6 +190,19 @@
       .filter-trigger::-webkit-details-marker { display: none; }
       .filter-trigger::before { content: "≡"; font-size: 13px; transform: rotate(90deg); }
       .filter-trigger:hover { border-color: var(--muted); }
+
+      .report-button {
+        min-height: 32px;
+        padding: 5px 9px;
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--foreground);
+        font-size: 11px;
+      }
+
+      .report-button:hover:not([aria-disabled="true"]) { border-color: var(--muted); }
+      .report-button[aria-disabled="true"] { cursor: default; color: var(--faint); }
 
       .filter-options {
         position: absolute;
@@ -1007,6 +1024,7 @@
         analysisRecord: null,
         analysisError: "",
         analyzing: false,
+        reporting: false,
         selectedEventIndex: 0,
         trigger: null,
         request: 0,
@@ -1130,7 +1148,34 @@
             })),
           ]),
         ]);
-        $("repos").replaceChildren(menu);
+        const report = el("button", {
+          class: "report-button",
+          id: "repo-report",
+          type: "button",
+          "aria-disabled": String(!state.repo || state.reporting || !state.app?.reportConfigured),
+          text: state.reporting ? "Generating report…" : "Failure report",
+          title: !state.repo
+            ? "Choose a repository to generate its failure report"
+            : "Analyze every session for this repository and generate one report",
+          onclick: generateReport,
+        });
+        $("repos").replaceChildren(menu, report);
+      }
+
+      async function generateReport() {
+        const repo = state.repo;
+        if (!repo || state.reporting || !state.app?.reportConfigured) return;
+        state.reporting = true;
+        renderRepos();
+        $("result-count").textContent = "Analyzing every " + shortRepo(repo) + " session and grouping the failures…";
+        try {
+          const result = await api("/api/reports/" + encodeURIComponent(repo), { method: "POST" });
+          window.location.href = result.url;
+        } catch (error) {
+          state.reporting = false;
+          renderRepos();
+          $("result-count").textContent = error.message;
+        }
       }
 
       function renderSessions() {
@@ -1774,7 +1819,7 @@
         }
         if (event.key !== "Tab") return;
         const focusable = [...$("session-dialog").querySelectorAll(
-          "button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])",
+          "button:not([disabled]), a[href], input:not([disabled]), summary, [tabindex]:not([tabindex='-1'])",
         )];
         if (!focusable.length) return;
         const first = focusable[0];

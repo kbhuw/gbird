@@ -4,8 +4,10 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   AgentKind,
   NormalizedSession,
+  RepoFailureReport,
   SessionAnalysis,
   SessionTimeline,
+  StoredRepoReport,
   StoredSessionAnalysis,
   TimelineEvent,
 } from "./schema.js";
@@ -74,6 +76,14 @@ export class TimelineStore {
         analyzer TEXT NOT NULL,
         created_at TEXT NOT NULL,
         analysis_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS repo_reports (
+        repo TEXT PRIMARY KEY,
+        input_hash TEXT NOT NULL,
+        analyzer TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        report_json TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS events_session_time
@@ -288,6 +298,46 @@ export class TimelineStore {
       analyzer: row.analyzer,
       createdAt: row.created_at,
       analysis: JSON.parse(row.analysis_json) as SessionAnalysis,
+    };
+  }
+
+  upsertRepoReport(record: StoredRepoReport): void {
+    this.db.prepare(`
+      INSERT INTO repo_reports (
+        repo, input_hash, analyzer, created_at, report_json
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(repo) DO UPDATE SET
+        input_hash = excluded.input_hash,
+        analyzer = excluded.analyzer,
+        created_at = excluded.created_at,
+        report_json = excluded.report_json
+    `).run(
+      record.repo,
+      record.inputHash,
+      record.analyzer,
+      record.createdAt,
+      JSON.stringify(record.report),
+    );
+  }
+
+  getRepoReport(repo: string): StoredRepoReport | null {
+    const row = this.db.prepare(`
+      SELECT input_hash, analyzer, created_at, report_json
+      FROM repo_reports
+      WHERE repo = ?
+    `).get(repo) as {
+      input_hash: string;
+      analyzer: string;
+      created_at: string;
+      report_json: string;
+    } | undefined;
+    if (!row) return null;
+    return {
+      repo,
+      inputHash: row.input_hash,
+      analyzer: row.analyzer,
+      createdAt: row.created_at,
+      report: JSON.parse(row.report_json) as RepoFailureReport,
     };
   }
 

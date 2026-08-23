@@ -3,7 +3,7 @@ import test from "node:test";
 import { seedDemo } from "../src/demo.js";
 import { startServer } from "../src/server.js";
 import { TimelineStore } from "../src/store.js";
-import type { SessionAnalysis } from "../src/schema.js";
+import type { RepoFailureReport, SessionAnalysis } from "../src/schema.js";
 
 test("serves the Cookiejar-style repo-filtered session timeline", async () => {
   const priorKey = process.env.DEVIN_API_KEY;
@@ -67,6 +67,50 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
         },
       };
     },
+    analyzeRepo: async (input): Promise<RepoFailureReport> => {
+      const occurrences = input.sessions.flatMap((item) => item.analysis.insights.map((insight) => ({
+        session_id: item.session.id,
+        session_title: item.session.title,
+        agent: item.session.agent,
+        insight_id: insight.id,
+        observed: insight.observed,
+        evidence_event_ids: insight.evidence.map((event) => event.event_id),
+      })));
+      const sessionCount = new Set(occurrences.map((occurrence) => occurrence.session_id)).size;
+      return {
+        report_schema_version: 1,
+        repo: input.repo,
+        source_repositories: input.source_repositories,
+        coverage: {
+          sessions_discovered: input.sessions.length,
+          sessions_analyzed: input.sessions.length,
+          sessions_with_failures: input.sessions.filter((item) => item.analysis.insights.length > 0).length,
+          input_insights: occurrences.length,
+          included_insights: occurrences.length,
+        },
+        failures: [{
+          id: "failure-001",
+          title: "Completion preceded final review evidence",
+          category: "premature_completion",
+          severity: "high",
+          confidence: 0.95,
+          classification: sessionCount >= 2 ? "recurring" : "single_occurrence",
+          summary: "The agent claimed completion before checking the latest review state.",
+          why_it_matters: "A pull request could be reported ready with unresolved findings.",
+          historical_session_count: sessionCount,
+          historical_occurrence_count: occurrences.length,
+          occurrences,
+          repro: {
+            prompt: "Assess whether this pull request is ready to merge and report the evidence.",
+            setup: ["Provide the current pull request state."],
+            failure_condition: "The agent reports ready while a current finding remains.",
+            success_condition: "The agent identifies the unresolved finding.",
+          },
+          suggested_guardrail: "Require current review-thread inspection before readiness claims.",
+        }],
+        limitations: ["Historical findings have not been replayed."],
+      };
+    },
   });
 
   try {
@@ -89,6 +133,7 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
     assert.ok(html.includes("Normalized data"));
     assert.ok(html.includes("Analyze"));
     assert.ok(html.includes("Failure hypotheses"));
+    assert.ok(html.includes("Failure report"));
 
     const about = await (await fetch(new URL("/about", running.url))).text();
     assert.ok(about.includes("Coding agents leave a trail"));
@@ -140,6 +185,33 @@ test("serves the Cookiejar-style repo-filtered session timeline", async () => {
       new URL("/api/sessions/devin-demo-cookiejar/analysis", running.url),
     )).json() as { analysis: SessionAnalysis | null };
     assert.equal(analysisAfter.analysis?.session_id, "devin-demo-cookiejar");
+
+    const reportBefore = await (await fetch(
+      new URL("/api/reports/DevelopIQ-ai%2Fcookiejar", running.url),
+    )).json() as { report: RepoFailureReport | null };
+    assert.equal(reportBefore.report, null);
+
+    const reported = await (await fetch(
+      new URL("/api/reports/DevelopIQ-ai%2Fcookiejar", running.url),
+      { method: "POST" },
+    )).json() as { report: RepoFailureReport; url: string };
+    assert.equal(reported.report.coverage.sessions_analyzed, 1);
+    assert.equal(reported.report.failures[0]?.repro.prompt, "Assess whether this pull request is ready to merge and report the evidence.");
+    assert.equal(reported.url, "/report?repo=DevelopIQ-ai%2Fcookiejar");
+
+    const reportPage = await (await fetch(
+      new URL("/report?repo=DevelopIQ-ai%2Fcookiejar", running.url),
+    )).text();
+    assert.ok(reportPage.includes("DevelopIQ-ai/cookiejar failures"));
+    assert.ok(reportPage.includes("Reproduction prompt"));
+    assert.ok(reportPage.includes("Evidence and proposed fix"));
+    assert.equal(reportPage.includes("<script>"), false);
+    assert.equal(reportPage.includes("<style>"), false);
+
+    const reportExport = await fetch(
+      new URL("/api/reports/DevelopIQ-ai%2Fcookiejar/export", running.url),
+    );
+    assert.match(reportExport.headers.get("content-disposition") ?? "", /gbird-report\.json/);
 
     const sync = await fetch(new URL("/api/sync", running.url), { method: "POST" });
     assert.equal(sync.status, 503);

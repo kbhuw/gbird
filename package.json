@@ -8,6 +8,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "plugin:package": "npm run build && node scripts/package-plugin.mjs",
+    "report": "node dist/src/cli.js report",
     "dev": "node --import tsx src/cli.ts serve --demo",
     "start": "node dist/src/cli.js serve",
     "start:secure": "npx -y @puffle/secret-valet exec devin/timeline -- node dist/src/cli.js serve",

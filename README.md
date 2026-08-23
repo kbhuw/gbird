@@ -4,9 +4,7 @@
 
 A slug is one evidence-backed place where a coding-agent session wasted work, failed, looped, misunderstood a requirement, or needed a user correction.
 
-gbird ingests Codex and Devin sessions into a repo-filtered timeline, joins them with GitHub PRs, commits, CI checks, reviews, and Greptile comments, then analyzes each session chronologically to catch slugs. Every slug cites the exact events that support it, measures attributable token/time waste without guessing, and includes a clean replay test.
-
-The ingestion and timeline UI are executable now. The slug-analysis contract and validator live in `skills/coding-session-analyst/`; wiring that analyzer into the server is the next vertical slice.
+gbird ingests Codex and Devin sessions into a repo-filtered timeline, joins them with GitHub PRs, commits, CI checks, reviews, and Greptile comments, then analyzes each session chronologically to catch slugs. It groups equivalent findings for one repository and produces a readable failure report with exact evidence and a neutral latest-code reproduction prompt for every failure.
 
 ## Run the UI with demo data
 
@@ -77,3 +75,30 @@ Open a session and press **Analyze**. gbird gives that session's normalized JSON
 Each hypothesis contains exact evidence event IDs, conservative token/time accounting, counterevidence, and a neutral replay specification. Evidence buttons jump to the supporting timeline node.
 
 This stage does not claim a recurring failure. A later validator will run the replay task with a fresh coding agent in a clean Daytona sandbox and classify it as `reproduced`, `not_reproduced`, or `inconclusive`.
+
+## Repository failure report
+
+Choose a repository in the dashboard and press **Failure report**, or run:
+
+```bash
+npm run build
+npm run report -- --repo owner/repo --db .data/gbird.db
+```
+
+The command imports every available Codex and configured Devin session unless `--skip-sync` is supplied, analyzes every session for the selected repository, groups only equivalent failures, and writes:
+
+- `~/.gbird/reports/owner--repo/report.html`
+- `~/.gbird/reports/owner--repo/report.json`
+
+The report validator requires every retained session insight to appear exactly once. A failure is labeled recurring only when it appears in at least two distinct sessions.
+
+## Codex plugin
+
+The repository is a valid Codex plugin with one user-facing skill, `$gbird`. Build the personal plugin package with:
+
+```bash
+npm run plugin:package
+codex plugin add gbird@personal
+```
+
+In a fresh Codex task, invoke `$gbird` from a repository checkout or provide an explicit `owner/repo`.
