@@ -78,6 +78,12 @@ function safeFilename(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "session";
 }
 
+function savedReportPath(repo: string): string | null {
+  const parts = repo.split("/");
+  if (parts.length !== 2 || !parts.every((part) => /^[a-zA-Z0-9._-]+$/.test(part))) return null;
+  return path.join(os.homedir(), ".gbird", "reports", `${parts[0]}--${parts[1]}`, "report.html");
+}
+
 function requestedAgent(url: URL): AgentKind | undefined {
   const value = url.searchParams.get("agent");
   return value === "codex" || value === "devin" ? value : undefined;
@@ -164,6 +170,11 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
           text(response, 400, "Choose a repository first.");
           return;
         }
+        const savedPath = savedReportPath(repo);
+        if (savedPath && fs.existsSync(savedPath)) {
+          text(response, 200, fs.readFileSync(savedPath, "utf8"), "text/html; charset=utf-8");
+          return;
+        }
         const stored = options.store.getRepoReport(repo);
         if (!stored) {
           text(response, 404, "No failure report has been generated for this repository.");
@@ -214,11 +225,15 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         const repo = decodeURIComponent(reportMatch[1]);
         if (request.method === "GET") {
           const stored = options.store.getRepoReport(repo);
+          const savedPath = savedReportPath(repo);
+          const existingReport = Boolean(stored || (savedPath && fs.existsSync(savedPath)));
           json(response, 200, {
             report: stored?.report ?? null,
             createdAt: stored?.createdAt ?? null,
             analyzer: stored?.analyzer ?? null,
             stale: stored ? repoReportIsStale(options.store, stored) : false,
+            existingReport,
+            url: existingReport ? `/report?repo=${encodeURIComponent(repo)}` : null,
           });
           return;
         }
