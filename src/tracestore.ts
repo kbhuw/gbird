@@ -10,6 +10,7 @@ import type {
 
 export interface SessionMeta {
   agent: AgentKind;
+  member?: string;
   title: string;
   status: string;
   startedAt: string;
@@ -117,7 +118,7 @@ export class TraceStore {
     return this.readTimeline(meta)?.events ?? [];
   }
 
-  private writeTimeline(timeline: SessionTimeline): void {
+  private writeTimeline(timeline: SessionTimeline, member?: string): void {
     const { session } = timeline;
     const relativePath = this.relativeSessionPath(session.agent, session.id);
     const filename = path.join(this.dir, relativePath);
@@ -125,6 +126,7 @@ export class TraceStore {
     writeJsonAtomic(filename, timeline);
     this.manifest.sessions[session.id] = {
       agent: session.agent,
+      member: member ?? this.manifest.sessions[session.id]?.member,
       title: session.title,
       status: session.status,
       startedAt: session.startedAt,
@@ -136,8 +138,13 @@ export class TraceStore {
     this.saveManifest();
   }
 
-  upsertSession(session: NormalizedSession): void {
-    this.writeTimeline({ session, events: this.loadExistingEvents(session.id) });
+  upsertSession(session: NormalizedSession, member?: string): void {
+    this.writeTimeline({ session, events: this.loadExistingEvents(session.id) }, member);
+  }
+
+  /** Store a complete timeline (e.g. shipped by a hook at session end). */
+  upsertTimeline(timeline: SessionTimeline, member?: string): void {
+    this.writeTimeline(timeline, member);
   }
 
   upsertEvents(events: TimelineEvent[]): void {
@@ -200,11 +207,12 @@ export class TraceStore {
     return meta ? this.readTimeline(meta) : null;
   }
 
-  listSessions(options: { agent?: AgentKind; repo?: string; query?: string } = {}): SessionListItem[] {
+  listSessions(options: { agent?: AgentKind; member?: string; repo?: string; query?: string } = {}): SessionListItem[] {
     const query = options.query?.toLowerCase();
     return Object.entries(this.manifest.sessions)
       .filter(([, meta]) => {
         if (options.agent && meta.agent !== options.agent) return false;
+        if (options.member && meta.member !== options.member) return false;
         if (options.repo && !meta.repositories.includes(options.repo)) return false;
         if (query && !meta.title.toLowerCase().includes(query)) return false;
         return true;

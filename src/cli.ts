@@ -78,6 +78,10 @@ Commands:
     --json                 Machine-readable output
   show <session-id>     Print one stored trace (session + events)
   hook <sub>            Hook runtime: record | collect [id] | ship [id] (see hooks/)
+  serve                 Run the trace server (UI + ingest API)
+    --port N               Port (default 8780 or GBIRD_PORT)
+    --base-url URL         Public URL for install links (default: request host)
+  invite <name>         Mint a member token; prints the install URL + prompt
   path                  Print the store directory
 
 Store: --dir or GBIRD_DIR (default ~/.gbird). Layout:
@@ -188,6 +192,32 @@ async function main(): Promise<void> {
   if (command === "hook") {
     const { main } = await import("./hookentry.js");
     main(process.argv.slice(3));
+    return;
+  }
+
+  if (command === "serve") {
+    const port = Number(option("--port") ?? process.env.GBIRD_PORT ?? 8780);
+    const { createGbirdServer } = await import("./server.js");
+    const server = createGbirdServer({ dir: store.dir, baseUrl: option("--base-url") });
+    server.listen(port, () => {
+      process.stdout.write(`gbird listening on http://localhost:${port}\nstore: ${store.dir}\n`);
+      if (!process.env.GBIRD_ADMIN_TOKEN) {
+        process.stderr.write("note: GBIRD_ADMIN_TOKEN unset — POST /api/members disabled (use gbird invite)\n");
+      }
+    });
+    return;
+  }
+
+  if (command === "invite") {
+    const name = process.argv[3];
+    if (!name) throw new Error("Pass a member name: gbird invite <name>.");
+    const { mintMember } = await import("./members.js");
+    const member = mintMember(store.dir, name);
+    const baseUrl = option("--base-url") ?? `http://localhost:${process.env.GBIRD_PORT ?? 8780}`;
+    process.stdout.write(
+      `${member.name}\n  token:   ${member.token}\n  install: ${baseUrl}/install/${member.token}\n` +
+        `  → teammate opens the install URL and hands the prompt to their agent.\n`,
+    );
     return;
   }
 

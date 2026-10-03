@@ -47,7 +47,7 @@ function baseEvent(payload, sessionId) {
         sessionId,
         repo: null,
         occurredAt,
-        source: agentKind(),
+        source: "hook",
         commitSha: null,
         path: null,
         url: null,
@@ -120,8 +120,7 @@ function toTimelineEvent(payload) {
             return { ...base, id: stableId(sessionId, base.occurredAt, eventName), type: `hook_${eventName}`, title: eventName, status: null, data: { ...shared, payload } };
     }
 }
-function record() {
-    const raw = readStdin();
+function recordPayload(raw) {
     if (!raw.trim())
         return;
     const event = toTimelineEvent(JSON.parse(raw));
@@ -130,6 +129,23 @@ function record() {
     const filename = livePath(event.sessionId);
     fs.mkdirSync(path.dirname(filename), { recursive: true });
     fs.appendFileSync(filename, `${JSON.stringify(event)}\n`);
+}
+function record() {
+    recordPayload(readStdin());
+}
+/** Hooks pipe the event payload on stdin — record it so the ship hook captures SessionEnd too. */
+function recordStdinIfPiped() {
+    if (process.stdin.isTTY)
+        return null;
+    try {
+        const raw = fs.readFileSync(0, "utf8");
+        recordPayload(raw);
+        const parsed = JSON.parse(raw);
+        return typeof parsed.session_id === "string" ? parsed.session_id : null;
+    }
+    catch {
+        return null;
+    }
 }
 function sessionFile(agent, sessionId) {
     return path.join(storeDir(), "sessions", agent, `${safeName(sessionId)}.json`);
@@ -225,6 +241,34 @@ function collect(filterId) {
     }
     return count;
 }
+/** POST one assembled session file to the gbird server (GBIRD_ENDPOINT + GBIRD_TOKEN). */
+function shipEndpoint(sessionId) {
+    const endpoint = process.env.GBIRD_ENDPOINT;
+    const token = process.env.GBIRD_TOKEN;
+    if (!endpoint || !token)
+        return false;
+    const file = sessionFile(agentKind(), sessionId);
+    if (!fs.existsSync(file))
+        return false;
+    try {
+        execFileSync("curl", [
+            "-fsS",
+            "--max-time",
+            "15",
+            "-H",
+            `Authorization: Bearer ${token}`,
+            "-H",
+            "content-type: application/json",
+            "--data-binary",
+            `@${file}`,
+            `${endpoint.replace(/\/+$/, "")}/v1/traces`,
+        ], { stdio: ["ignore", "pipe", "ignore"] });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
 /** Push one assembled session file to a git remote via the GitHub contents API. */
 function shipGitHub(sessionId) {
     const repo = process.env.GBIRD_REPO;
@@ -253,8 +297,10 @@ function shipGitHub(sessionId) {
     }
 }
 function ship(sessionId) {
+    const stdinSession = recordStdinIfPiped();
     const liveDir = path.join(storeDir(), "live", agentKind());
-    const ids = sessionId ? [sessionId] : fs.existsSync(liveDir)
+    const only = sessionId ?? stdinSession;
+    const ids = only ? [only] : fs.existsSync(liveDir)
         ? fs.readdirSync(liveDir).filter((entry) => entry.endsWith(".jsonl")).map((entry) => entry.slice(0, -".jsonl".length))
         : [];
     for (const id of ids) {
@@ -264,7 +310,7 @@ function ship(sessionId) {
         catch { /* no live log for this id */ }
         if (!fs.existsSync(sessionFile(agentKind(), id)))
             continue;
-        const shipped = shipGitHub(id);
+        const shipped = shipEndpoint(id) || shipGitHub(id);
         process.stdout.write(`${shipped ? "shipped" : "kept"} ${id}\n`);
     }
 }

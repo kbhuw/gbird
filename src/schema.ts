@@ -4,7 +4,7 @@ export type JsonValue = string | number | boolean | null | JsonObject | JsonValu
 export type JsonObject = { [key: string]: JsonValue };
 
 export type AgentKind = "devin" | "codex";
-export type EventSource = "devin" | "codex" | "tool" | "github" | "greptile" | "ci";
+export type EventSource = "devin" | "codex" | "hook" | "tool" | "github" | "greptile" | "ci";
 
 export interface PullRequestRef {
   url: string;
