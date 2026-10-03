@@ -1,0 +1,13 @@
+initialize: |
+  # node >= 22.5 and npm are on the base image; nothing extra needed
+maintenance: |
+  npm install && npm run build
+knowledge:
+  - name: test
+    contents: |
+      # npm test (node --import tsx --test test/*.test.ts)
+  - name: serve
+    contents: |
+      # GBIRD_DIR=/tmp/gbird-srv GBIRD_PORT=8780 node dist/src/cli.js serve
+      # mint a member: node dist/src/cli.js invite <name>
+      # simulate a teammate's agent (record -> ship -> POST /v1/traces): see the gbird-trace-server skill
