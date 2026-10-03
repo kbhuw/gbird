@@ -1,47 +1,62 @@
 # gbird
 
-**Repo + coding-agent sessions → verified failure report.**
+**An agent trace store.** Pull coding-agent sessions into plain files you can keep forever.
 
-gbird finds where coding agents waste work: wrong commands, repeated searches, ignored instructions, skipped checks, user corrections, and early completion claims.
+gbird ingests Devin and Codex sessions, normalizes them into one event schema, and writes them to a directory — nothing else. Run it on a schedule and your trace history accumulates on its own; point an LLM at the directory later to hunt for behavioral patterns.
 
-## How it works
+## The store
 
-1. Collect the Codex and Devin sessions for one repository.
-2. Walk every session in order and catch evidence-backed failures.
-3. Group the same failure across sessions.
-4. Give each neutral test to a fresh subagent with no historical context.
-5. Mark it `reproduced`, `not reproduced`, or `inconclusive`.
-
-Historical evidence and fresh replay evidence remain separate. The replay worker never sees the suspected failure or the conditions used to judge it.
-
-## Output
-
-gbird writes exactly two files:
-
-- `report.html` — the readable report
-- `report.json` — the full evidence and replay results
-
-## Run
-
-Install the Codex plugin, then run from a repository checkout:
+Everything lives under `GBIRD_DIR` (default `~/.gbird`):
 
 ```text
-$gbird
+~/.gbird/
+  index.json                     manifest: every session's metadata + source hashes
+  sessions/
+    devin/<session-id>.json      one normalized timeline per file
+    codex/<session-id>.json
 ```
 
-Or name the repository explicitly:
+Each session file is a `SessionTimeline`: normalized session metadata plus every captured event (messages, tool calls, edits, commands, PR activity) in chronological order. Plain JSON, no database — commit the directory to git, rsync it, or read it directly.
 
-```text
-$gbird owner/repo
+## Pull
+
+```bash
+npm install
+npm run pull                 # all configured sources, incremental
 ```
 
-For local development:
+Incremental by default: Devin sessions are re-pulled only when `updated_at` moved, Codex rollout files only when their contents changed. `--force` re-pulls everything listed.
+
+```bash
+node dist/src/cli.js pull --source devin --all     # every Devin session
+node dist/src/cli.js pull --source codex --limit 500
+```
+
+### Sources
+
+- **Devin** — `DEVIN_API_KEY` + `DEVIN_ORG_ID` (save once with `npm run secret:save`, or put them in `.env`). Optionally enriches each session with its GitHub PR timeline when the `gh` CLI is available (`--no-github` to skip).
+- **Codex** — reads rollout `.jsonl` files from `~/.codex/sessions` and `~/.codex/archived_sessions` (override with `CODEX_SESSIONS_ROOT`). No credentials needed.
+
+## Read
+
+```bash
+node dist/src/cli.js list                      # newest first
+node dist/src/cli.js list --repo owner/repo    # filter
+node dist/src/cli.js list --json               # machine-readable
+node dist/src/cli.js show <session-id>         # one full trace
+node dist/src/cli.js path                      # store directory
+```
+
+## Automatic
+
+The store is just files, so any scheduler works. A cron or scheduled agent that runs `gbird pull` and commits `~/.gbird` to a private repo gives you durable, versioned traces with zero infrastructure.
+
+## Development
 
 ```bash
 npm install
 npm test
 npm run build
-npm run dev
 ```
 
-The dashboard runs at `http://127.0.0.1:4189/`; the small product page is at `/about`.
+Node ≥ 22.5.
