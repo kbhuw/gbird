@@ -77,6 +77,7 @@ Commands:
     --query text           Filter by title
     --json                 Machine-readable output
   show <session-id>     Print one stored trace (session + events)
+  hook <sub>            Hook runtime: record | collect [id] | ship [id] (see hooks/)
   path                  Print the store directory
 
 Store: --dir or GBIRD_DIR (default ~/.gbird). Layout:
@@ -181,6 +182,12 @@ async function main(): Promise<void> {
 
   if (command === "pull") {
     await pull(store);
+    return;
+  }
+
+  if (command === "hook") {
+    const { main } = await import("./hookentry.js");
+    main(process.argv.slice(3));
     return;
   }
 

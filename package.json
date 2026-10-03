@@ -10,7 +10,7 @@
     "node": ">=22.5"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-hook.mjs",
     "pull": "node --import tsx src/cli.ts pull",
     "pull:secure": "npx -y @puffle/secret-valet exec devin/timeline -- node --import tsx src/cli.ts pull",
     "list": "node --import tsx src/cli.ts list",

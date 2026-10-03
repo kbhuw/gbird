@@ -1,0 +1,34 @@
+{
+  "SessionStart": [
+    {
+      "matcher": "",
+      "hooks": [
+        { "type": "command", "command": "node \"$HOME/.gbird/gbird-hook.mjs\" record" }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "matcher": "",
+      "hooks": [
+        { "type": "command", "command": "node \"$HOME/.gbird/gbird-hook.mjs\" record" }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "",
+      "hooks": [
+        { "type": "command", "command": "node \"$HOME/.gbird/gbird-hook.mjs\" record" }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "matcher": "",
+      "hooks": [
+        { "type": "command", "command": "node \"$HOME/.gbird/gbird-hook.mjs\" ship" }
+      ]
+    }
+  ]
+}
