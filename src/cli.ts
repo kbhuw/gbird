@@ -198,7 +198,10 @@ async function main(): Promise<void> {
   if (command === "serve") {
     const port = Number(option("--port") ?? process.env.GBIRD_PORT ?? 8780);
     const { createGbirdServer } = await import("./server.js");
-    const server = createGbirdServer({ dir: store.dir, baseUrl: option("--base-url") });
+    const server = createGbirdServer({
+      dir: store.dir,
+      baseUrl: option("--base-url") ?? process.env.GBIRD_BASE_URL,
+    });
     server.listen(port, () => {
       process.stdout.write(`gbird listening on http://localhost:${port}\nstore: ${store.dir}\n`);
       if (!process.env.GBIRD_ADMIN_TOKEN) {
@@ -213,7 +216,7 @@ async function main(): Promise<void> {
     if (!name) throw new Error("Pass a member name: gbird invite <name>.");
     const { mintMember } = await import("./members.js");
     const member = mintMember(store.dir, name);
-    const baseUrl = option("--base-url") ?? `http://localhost:${process.env.GBIRD_PORT ?? 8780}`;
+    const baseUrl = option("--base-url") ?? process.env.GBIRD_BASE_URL ?? `http://localhost:${process.env.GBIRD_PORT ?? 8780}`;
     process.stdout.write(
       `${member.name}\n  token:   ${member.token}\n  install: ${baseUrl}/install/${member.token}\n` +
         `  → teammate opens the install URL and hands the prompt to their agent.\n`,

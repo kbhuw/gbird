@@ -235,7 +235,7 @@ export function createGbirdServer(options: ServerOptions): http.Server {
   return http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
-      const baseUrl = options.baseUrl ?? `${req.headers["x-forwarded-proto"] ?? "http"}://${req.headers.host ?? "localhost"}`;
+      const baseUrl = options.baseUrl ?? process.env.GBIRD_BASE_URL ?? `${req.headers["x-forwarded-proto"] ?? "http"}://${req.headers.host ?? "localhost"}`;
       const segments = url.pathname.split("/").filter(Boolean);
 
       // --- ingest ---
@@ -250,6 +250,10 @@ export function createGbirdServer(options: ServerOptions): http.Server {
           return json(res, 400, { error: "invalid json" });
         }
         if (!isTimeline(timeline)) return json(res, 400, { error: "expected {session, events}" });
+        const existing = store.getMeta(timeline.session.id);
+        if (existing?.member && existing.member !== member.name) {
+          return json(res, 409, { error: "session belongs to another member" });
+        }
         store.upsertTimeline(timeline, member.name);
         return json(res, 201, { ok: true, id: timeline.session.id });
       }

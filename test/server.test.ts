@@ -119,6 +119,26 @@ test("POST /v1/traces rejects unknown and missing tokens", async () => {
   });
 });
 
+test("POST /v1/traces rejects cross-member overwrites but allows the owner to re-ship", async () => {
+  const dir = tmpDir();
+  const alice = mintMember(dir, "alice");
+  const bob = mintMember(dir, "bob");
+  await withServer(dir, async (baseUrl) => {
+    const ship = (token: string, title: string) =>
+      fetch(`${baseUrl}/v1/traces`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(makeTimeline("devin-s1", title)),
+      });
+    assert.equal((await ship(alice.token, "alice's run")).status, 201);
+    assert.equal((await ship(bob.token, "bob hijack")).status, 409);
+    assert.equal((await ship(alice.token, "alice re-ship")).status, 201);
+    const detail = await (await fetch(`${baseUrl}/api/sessions/devin-s1`)).json();
+    assert.equal(detail.member, "alice");
+    assert.equal(detail.session.title, "alice re-ship");
+  });
+});
+
 test("install page serves a self-setup prompt and hook assets", async () => {
   const dir = tmpDir();
   const member = mintMember(dir, "kush");

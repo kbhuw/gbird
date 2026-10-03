@@ -67,11 +67,17 @@ function writeJsonAtomic(filename: string, value: unknown): void {
  */
 export class TraceStore {
   readonly dir: string;
-  private manifest: Manifest;
+  private manifest: Manifest = emptyManifest();
+  private manifestMtime = 0;
+  private manifestSize = -1;
 
   constructor(dir: string) {
     this.dir = path.resolve(dir);
     fs.mkdirSync(this.sessionsDir(), { recursive: true });
+    this.loadManifest();
+  }
+
+  private loadManifest(): void {
     const manifestPath = this.manifestPath();
     if (fs.existsSync(manifestPath)) {
       const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Partial<Manifest>;
@@ -80,9 +86,24 @@ export class TraceStore {
         sessions: parsed.sessions ?? {},
         sources: parsed.sources ?? {},
       };
+      const stat = fs.statSync(manifestPath);
+      this.manifestMtime = stat.mtimeMs;
+      this.manifestSize = stat.size;
     } else {
       this.manifest = emptyManifest();
       this.saveManifest();
+    }
+  }
+
+  /** Re-read index.json when another writer (or a file-level edit) changed it. */
+  private reloadIfChanged(): void {
+    const manifestPath = this.manifestPath();
+    try {
+      const stat = fs.statSync(manifestPath);
+      // size catches same-ms writes where mtime alone would not change
+      if (stat.mtimeMs !== this.manifestMtime || stat.size !== this.manifestSize) this.loadManifest();
+    } catch {
+      if (Object.keys(this.manifest.sessions).length > 0) this.loadManifest(); // manifest deleted
     }
   }
 
@@ -104,6 +125,11 @@ export class TraceStore {
 
   private saveManifest(): void {
     writeJsonAtomic(this.manifestPath(), this.manifest);
+    try {
+      const stat = fs.statSync(this.manifestPath());
+      this.manifestMtime = stat.mtimeMs;
+      this.manifestSize = stat.size;
+    } catch { /* best effort */ }
   }
 
   private readTimeline(meta: SessionMeta): SessionTimeline | null {
@@ -139,15 +165,18 @@ export class TraceStore {
   }
 
   upsertSession(session: NormalizedSession, member?: string): void {
+    this.reloadIfChanged();
     this.writeTimeline({ session, events: this.loadExistingEvents(session.id) }, member);
   }
 
   /** Store a complete timeline (e.g. shipped by a hook at session end). */
   upsertTimeline(timeline: SessionTimeline, member?: string): void {
+    this.reloadIfChanged();
     this.writeTimeline(timeline, member);
   }
 
   upsertEvents(events: TimelineEvent[]): void {
+    this.reloadIfChanged();
     const bySession = new Map<string, TimelineEvent[]>();
     for (const event of events) {
       const list = bySession.get(event.sessionId) ?? [];
@@ -190,6 +219,7 @@ export class TraceStore {
   }
 
   replaceEvents(sessionId: string, events: TimelineEvent[]): void {
+    this.reloadIfChanged();
     const meta = this.manifest.sessions[sessionId];
     if (!meta) return;
     const timeline = this.readTimeline(meta);
@@ -199,15 +229,18 @@ export class TraceStore {
 
   /** Returns the stored metadata for a session, for incremental-sync checks. */
   getMeta(id: string): SessionMeta | null {
+    this.reloadIfChanged();
     return this.manifest.sessions[id] ?? null;
   }
 
   getTimeline(id: string): SessionTimeline | null {
+    this.reloadIfChanged();
     const meta = this.manifest.sessions[id];
     return meta ? this.readTimeline(meta) : null;
   }
 
   listSessions(options: { agent?: AgentKind; member?: string; repo?: string; query?: string } = {}): SessionListItem[] {
+    this.reloadIfChanged();
     const query = options.query?.toLowerCase();
     return Object.entries(this.manifest.sessions)
       .filter(([, meta]) => {
@@ -222,6 +255,7 @@ export class TraceStore {
   }
 
   listRepos(agent?: AgentKind): RepoSummary[] {
+    this.reloadIfChanged();
     const counts = new Map<string, number>();
     for (const meta of Object.values(this.manifest.sessions)) {
       if (agent && meta.agent !== agent) continue;
@@ -233,6 +267,7 @@ export class TraceStore {
   }
 
   countSessions(agent?: AgentKind): number {
+    this.reloadIfChanged();
     return Object.values(this.manifest.sessions)
       .filter((meta) => !agent || meta.agent === agent)
       .length;
@@ -249,11 +284,13 @@ export class TraceStore {
 
   /** Session id previously ingested from this unchanged source, if any. */
   lookupSource(filename: string): string | null {
+    this.reloadIfChanged();
     const record = this.manifest.sources[filename];
     return record && record.hash === TraceStore.sourceHash(filename) ? record.sessionId : null;
   }
 
   recordSource(filename: string, sessionId: string): void {
+    this.reloadIfChanged();
     this.manifest.sources[filename] = { hash: TraceStore.sourceHash(filename), sessionId };
     this.saveManifest();
   }

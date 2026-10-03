@@ -128,7 +128,22 @@ function recordPayload(raw) {
         return;
     const filename = livePath(event.sessionId);
     fs.mkdirSync(path.dirname(filename), { recursive: true });
-    fs.appendFileSync(filename, `${JSON.stringify(event)}\n`);
+    let needsSeparator = false;
+    if (fs.existsSync(filename)) {
+        const fd = fs.openSync(filename, "r");
+        try {
+            const size = fs.fstatSync(fd).size;
+            if (size > 0) {
+                const last = Buffer.alloc(1);
+                fs.readSync(fd, last, 0, 1, size - 1);
+                needsSeparator = last[0] !== 0x0a; // recover from a truncated last line (crash mid-append)
+            }
+        }
+        finally {
+            fs.closeSync(fd);
+        }
+    }
+    fs.appendFileSync(filename, `${needsSeparator ? "\n" : ""}${JSON.stringify(event)}\n`);
 }
 function record() {
     recordPayload(readStdin());

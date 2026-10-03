@@ -135,3 +135,22 @@ test("persists across TraceStore instances and skips unchanged sources", () => {
   fs.appendFileSync(rollout, "{\"type\":\"event_msg\"}\n");
   assert.equal(reopened.lookupSource(rollout), null); // changed file = re-ingest
 });
+
+test("reloads the manifest when another writer changes or deletes index.json", () => {
+  const dir = tmpDir();
+  const first = new TraceStore(dir);
+  first.upsertSession(session("devin-1"));
+
+  const second = new TraceStore(dir);
+  assert.equal(second.countSessions(), 1);
+
+  // Another writer adds a session — second instance picks it up on next read.
+  first.upsertSession(session("devin-2"));
+  assert.equal(second.countSessions(), 2);
+
+  // External file-level change (e.g. git checkout of the store dir): no phantom rows.
+  fs.rmSync(path.join(dir, "index.json"));
+  fs.rmSync(path.join(dir, "sessions"), { recursive: true });
+  assert.equal(second.countSessions(), 0);
+  assert.equal(second.getTimeline("devin-1"), null);
+});
