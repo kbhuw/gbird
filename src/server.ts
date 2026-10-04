@@ -197,6 +197,78 @@ function hooksConfig(baseUrl: string, token: string): unknown {
   };
 }
 
+function repoInstallPrompt(tracesRepo: string): string {
+  const record = (agent: string) => `GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record`;
+  const bootstrap = (agent: string) =>
+    `mkdir -p "$HOME/.gbird" && ([ -f "$HOME/.gbird/gbird-hook.mjs" ] || curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/main/hooks/gbird-hook.mjs -o "$HOME/.gbird/gbird-hook.mjs"); ${record(agent)}`;
+  const ship = (agent: string) => `GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship`;
+  const devinEvent = (command: string) =>
+    `{ "matcher": "", "hooks": [{ "type": "command", "command": "${command.replaceAll('"', '\\"')}" }] }`;
+  const claude = JSON.stringify({
+    hooks: {
+      SessionStart: [{ matcher: "", hooks: [{ type: "command", command: bootstrap("claude") }] }],
+      UserPromptSubmit: [{ matcher: "", hooks: [{ type: "command", command: record("claude") }] }],
+      PostToolUse: [{ matcher: "", hooks: [{ type: "command", command: record("claude") }] }],
+      SessionEnd: [{ matcher: "", hooks: [{ type: "command", command: ship("claude") }] }],
+    },
+  }, null, 2);
+  const devin = JSON.stringify({
+    SessionStart: [JSON.parse(devinEvent(bootstrap("devin")))],
+    UserPromptSubmit: [JSON.parse(devinEvent(record("devin")))],
+    PostToolUse: [JSON.parse(devinEvent(record("devin")))],
+    SessionEnd: [JSON.parse(devinEvent(ship("devin")))],
+  }, null, 2);
+  const cursor = JSON.stringify({
+    version: 1,
+    hooks: {
+      sessionStart: [{ command: bootstrap("cursor") }],
+      beforeSubmitPrompt: [{ command: record("cursor") }],
+      postToolUse: [{ command: record("cursor") }],
+      sessionEnd: [{ command: ship("cursor") }],
+    },
+  }, null, 2);
+
+  return `You are installing gbird trace capture ON THIS REPOSITORY.
+From now on, any coding agent that works on this repo will have its session
+recorded locally (~/.gbird/) and the finished trace pushed to the repo
+${tracesRepo} via the developer's own gh credentials.
+
+1. Check gh auth is set up (it stamps the member name and does the push):
+
+     gh auth status
+
+   If it fails, ask the human to run gh auth login, or stop.
+
+2. Write the hook config for every agent harness, in the repo root:
+
+   .devin/hooks.v1.json  (Devin CLI):
+${devin}
+
+   .devin/hooks.json  (Devin Desktop — same content as hooks.v1.json)
+
+   .claude/settings.json  (Claude Code — merge "hooks" if the file exists):
+${claude}
+
+   .cursor/hooks.json  (Cursor):
+${cursor}
+
+3. Commit these files to the repo. Anyone who works on it from now on is
+   captured automatically — no per-person setup. Traces file under
+   sessions/<their-github-username>/<agent>/<id>.json in ${tracesRepo}.
+
+4. Self-test once (in your own session, not committed):
+
+     echo '{"hook_event_name":"SessionStart","session_id":"gbird-selftest"}' | node ~/.gbird/gbird-hook.mjs record
+     echo '{"hook_event_name":"SessionEnd","session_id":"gbird-selftest","reason":"test"}' | GBIRD_REPO=${tracesRepo} node ~/.gbird/gbird-hook.mjs ship
+
+   "shipped gbird-selftest" = your gh can push to ${tracesRepo}. "kept" =
+   no write access — tell the human.
+
+The hook is fail-open and never throws — it cannot break an agent session.
+Agents without lifecycle hooks (Codex) are covered by 'gbird pull' backfill.
+`;
+}
+
 function installPrompt(baseUrl: string, member: { name: string; token: string }): string {
   return `You are setting up gbird agent-trace capture for ${member.name} on this machine.
 All traces are sent to ${baseUrl} and are readable at ${baseUrl}/ .
@@ -297,6 +369,21 @@ export function createGbirdServer(options: ServerOptions): http.Server {
         const member = memberByToken(dir, url.searchParams.get("token") ?? "");
         if (!member) return json(res, 401, { error: "unknown token" });
         return json(res, 200, hooksConfig(baseUrl, member.token));
+      }
+      if (req.method === "GET" && url.pathname === "/install") {
+        const repo = url.searchParams.get("repo") ?? process.env.GBIRD_DEFAULT_REPO ?? "YOURORG/agent-traces";
+        const prompt = repoInstallPrompt(repo);
+        if (url.searchParams.get("format") === "md" || req.headers.accept?.includes("text/markdown")) {
+          res.writeHead(200, { "content-type": "text/markdown" });
+          return res.end(prompt);
+        }
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end(
+          page(
+            "gbird a repo",
+            `<p>Paste this page's contents to a coding agent inside the repo you want captured. It writes the hook configs for every agent harness, commits them, and self-tests. Traces land in <code>${escapeHtml(repo)}</code> — set it with <code>?repo=org/name</code> or GBIRD_DEFAULT_REPO.</p><pre class="prompt">${escapeHtml(prompt)}</pre>`,
+          ),
+        );
       }
       if (req.method === "GET" && segments[0] === "install" && segments[1]) {
         const token = decodeURIComponent(segments[1]).replace(/\.md$/, "");
