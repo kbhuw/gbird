@@ -10,11 +10,13 @@ export interface RepoHookConfigs {
   claude: string;
   /** .cursor/hooks.json (Cursor). */
   cursor: string;
+  /** .codex/hooks.json (Codex CLI — user trusts the hook once via /hooks). */
+  codex: string;
 }
 
-const HOOK_VERSION_MARKER = "gbird-hook v2";
+const HOOK_VERSION_MARKER = "gbird-hook v3";
 const HOOK_URL =
-  "https://raw.githubusercontent.com/kbhuw/gbird/e842f0594027b6900927760c4d73f2bd0adce3c8/hooks/gbird-hook.mjs";
+  "https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs";
 
 export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   const record = (agent: string) => `GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record`;
@@ -55,6 +57,19 @@ export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
           beforeSubmitPrompt: [{ command: record("cursor") }],
           postToolUse: [{ command: record("cursor") }],
           sessionEnd: [{ command: ship("cursor") }],
+        },
+      },
+      null,
+      2,
+    ),
+    codex: JSON.stringify(
+      {
+        description: "gbird agent-trace capture",
+        hooks: {
+          SessionStart: [{ matcher: "startup|resume|clear", hooks: [{ type: "command", command: bootstrap("codex") }] }],
+          UserPromptSubmit: [{ hooks: [{ type: "command", command: record("codex") }] }],
+          PostToolUse: [{ hooks: [{ type: "command", command: record("codex") }] }],
+          SessionEnd: [{ hooks: [{ type: "command", command: ship("codex") }] }],
         },
       },
       null,
