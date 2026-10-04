@@ -15,6 +15,21 @@ import path from "node:path";
 function storeDir() {
     return path.resolve(process.env.GBIRD_DIR ?? path.join(os.homedir(), ".gbird"));
 }
+/** Load KEY=VALUE lines from <store>/config.env for keys not already in env. */
+function loadConfigFile() {
+    try {
+        const file = path.join(storeDir(), "config.env");
+        if (!fs.existsSync(file))
+            return;
+        for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+            const match = /^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/.exec(line);
+            if (match && process.env[match[1]] === undefined) {
+                process.env[match[1]] = match[2].trim().replace(/^['"]|['"]$/g, "");
+            }
+        }
+    }
+    catch { /* config file is optional */ }
+}
 function agentKind() {
     return process.env.GBIRD_AGENT === "codex" ? "codex" : "devin";
 }
@@ -360,6 +375,7 @@ function ship(sessionId) {
     }
 }
 export function main(argv) {
+    loadConfigFile();
     const command = argv[0] ?? "record";
     if (command === "record")
         return record();

@@ -13,7 +13,9 @@ session ends
 
 ## Onboard a teammate
 
-Send them [`hooks/INSTALL.md`](hooks/INSTALL.md) — it is a prompt, not a readme. They hand it to their agent (Devin, Claude Code, …); the agent asks them which repo to ship to (or `gh repo create`s a private `agent-traces` itself), downloads the hook, registers the config, verifies `gh auth`, and self-tests a trace into the repo. No accounts or tokens beyond the GitHub access they already have — write access on that repo *is* the permission model, and their `gh` login is what stamps `member:` on each trace.
+Send them [`hooks/INSTALL.md`](hooks/INSTALL.md) — it is a prompt, not a readme. They hand it to their agent (Devin, Claude Code, …); the agent asks them which repo to ship to (or `gh repo create`s a private `agent-traces` itself), downloads the hook, writes `GBIRD_REPO=<repo>` into `~/.gbird/config.env`, registers the config, verifies `gh auth`, and self-tests a trace into the repo. No accounts or tokens beyond the GitHub access they already have — write access on that repo *is* the permission model, and their `gh` login is what stamps `member:` on each trace.
+
+**Or install it as a Devin plugin** — this repo *is* a plugin (`.devin-plugin/plugin.json` + root `hooks.json`). Install `https://github.com/kbhuw/gbird` in Devin CLI/Desktop (org-wide even) and the hooks fire in every local session, self-bootstrapping the hook script on first fire; `~/.gbird/config.env` still provides the repo.
 
 ## The hook
 
@@ -25,7 +27,9 @@ Send them [`hooks/INSTALL.md`](hooks/INSTALL.md) — it is a prompt, not a readm
 
 Member identity: `GBIRD_MEMBER` if set, else the `gh`-authenticated user (`gh api user`, or the account shown by `gh auth status` for app tokens), else the OS user.
 
-Wired events in [`hooks/hooks.v1.json`](hooks/hooks.v1.json): `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `SessionEnd` — the last carries `GBIRD_REPO=REPLACE_WITH_YOUR_TRACES_REPO`, which setup replaces with the chosen repo.
+Configuration: the hook reads `~/.gbird/config.env` (`KEY=VALUE` lines) for any unset env var — that's where `GBIRD_REPO` lives after setup.
+
+Wired events in [`hooks/hooks.v1.json`](hooks/hooks.v1.json): `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `SessionEnd`.
 
 ## The server (optional)
 
@@ -48,7 +52,7 @@ Store is plain files under `GBIRD_DIR` (default `~/.gbird`): `index.json` + `ses
 
 ## Env
 
-Hook side: `GBIRD_REPO` (ship target repo), `GBIRD_REPO_BRANCH` (ship to a non-default branch), `GBIRD_ENDPOINT` + `GBIRD_TOKEN` (server ingest), `GBIRD_MEMBER` (identity override), `GBIRD_AGENT`, `GBIRD_DIR`. Server side: `GBIRD_PORT`, `GBIRD_BASE_URL`, `GBIRD_ADMIN_TOKEN`.
+Hook side: `GBIRD_REPO` (ship target repo), `GBIRD_REPO_BRANCH` (ship to a non-default branch), `GBIRD_ENDPOINT` + `GBIRD_TOKEN` (server ingest), `GBIRD_MEMBER` (identity override), `GBIRD_AGENT`, `GBIRD_DIR` — all settable in `~/.gbird/config.env`. Server side: `GBIRD_PORT`, `GBIRD_BASE_URL`, `GBIRD_ADMIN_TOKEN`.
 
 ## Development
 
