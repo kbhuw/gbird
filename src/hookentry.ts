@@ -15,7 +15,7 @@ import os from "node:os";
 import path from "node:path";
 
 type JsonObject = Record<string, unknown>;
-type AgentKind = "devin" | "codex";
+type AgentKind = "devin" | "codex" | "claude" | "cursor" | "agent";
 
 interface TimelineEvent {
   schemaVersion: 1;
@@ -71,7 +71,8 @@ function loadConfigFile(): void {
 }
 
 function agentKind(): AgentKind {
-  return process.env.GBIRD_AGENT === "codex" ? "codex" : "devin";
+  const kind = process.env.GBIRD_AGENT;
+  return kind === "codex" || kind === "claude" || kind === "cursor" || kind === "agent" ? kind : "devin";
 }
 
 function safeName(id: string): string {
@@ -113,11 +114,32 @@ function baseEvent(payload: JsonObject, sessionId: string): Omit<TimelineEvent, 
   };
 }
 
+/** Other harnesses use camelCase event names and different session-id fields. */
+const EVENT_ALIASES: Record<string, string> = {
+  sessionStart: "SessionStart",
+  sessionEnd: "SessionEnd",
+  beforeSubmitPrompt: "UserPromptSubmit",
+  preToolUse: "PreToolUse",
+  postToolUse: "PostToolUse",
+  afterAgentResponse: "Stop",
+  stop: "Stop",
+  subagentStop: "Stop",
+};
+
+function sessionIdOf(payload: JsonObject): string {
+  for (const key of ["session_id", "conversation_id", "sessionId", "sessionID"]) {
+    const value = payload[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return "";
+}
+
 /** Map one hook stdin payload to a TimelineEvent. */
 function toTimelineEvent(payload: JsonObject): TimelineEvent | null {
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
+  const sessionId = sessionIdOf(payload);
   if (!sessionId) return null;
-  const eventName = String(payload.hook_event_name ?? "unknown");
+  const rawName = String(payload.hook_event_name ?? "unknown");
+  const eventName = EVENT_ALIASES[rawName] ?? rawName;
   const base = baseEvent(payload, sessionId);
   const promptId = typeof payload.prompt_id === "string" ? payload.prompt_id : null;
   const shared: JsonObject = { promptId, hookEvent: eventName };
@@ -214,8 +236,7 @@ function recordStdinIfPiped(): string | null {
   try {
     const raw = fs.readFileSync(0, "utf8");
     recordPayload(raw);
-    const parsed = JSON.parse(raw) as JsonObject;
-    return typeof parsed.session_id === "string" ? parsed.session_id : null;
+    return sessionIdOf(JSON.parse(raw) as JsonObject) || null;
   } catch {
     return null;
   }

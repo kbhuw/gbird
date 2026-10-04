@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 export type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 
-export type AgentKind = "devin" | "codex";
+export type AgentKind = "devin" | "codex" | "claude" | "cursor" | "agent";
 export type EventSource = "devin" | "codex" | "hook" | "tool" | "github" | "greptile" | "ci";
 
 export interface PullRequestRef {

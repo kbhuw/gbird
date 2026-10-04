@@ -31,7 +31,8 @@ function loadConfigFile() {
     catch { /* config file is optional */ }
 }
 function agentKind() {
-    return process.env.GBIRD_AGENT === "codex" ? "codex" : "devin";
+    const kind = process.env.GBIRD_AGENT;
+    return kind === "codex" || kind === "claude" || kind === "cursor" || kind === "agent" ? kind : "devin";
 }
 function safeName(id) {
     return id.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -68,12 +69,32 @@ function baseEvent(payload, sessionId) {
         url: null,
     };
 }
+/** Other harnesses use camelCase event names and different session-id fields. */
+const EVENT_ALIASES = {
+    sessionStart: "SessionStart",
+    sessionEnd: "SessionEnd",
+    beforeSubmitPrompt: "UserPromptSubmit",
+    preToolUse: "PreToolUse",
+    postToolUse: "PostToolUse",
+    afterAgentResponse: "Stop",
+    stop: "Stop",
+    subagentStop: "Stop",
+};
+function sessionIdOf(payload) {
+    for (const key of ["session_id", "conversation_id", "sessionId", "sessionID"]) {
+        const value = payload[key];
+        if (typeof value === "string" && value)
+            return value;
+    }
+    return "";
+}
 /** Map one hook stdin payload to a TimelineEvent. */
 function toTimelineEvent(payload) {
-    const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
+    const sessionId = sessionIdOf(payload);
     if (!sessionId)
         return null;
-    const eventName = String(payload.hook_event_name ?? "unknown");
+    const rawName = String(payload.hook_event_name ?? "unknown");
+    const eventName = EVENT_ALIASES[rawName] ?? rawName;
     const base = baseEvent(payload, sessionId);
     const promptId = typeof payload.prompt_id === "string" ? payload.prompt_id : null;
     const shared = { promptId, hookEvent: eventName };
@@ -170,8 +191,7 @@ function recordStdinIfPiped() {
     try {
         const raw = fs.readFileSync(0, "utf8");
         recordPayload(raw);
-        const parsed = JSON.parse(raw);
-        return typeof parsed.session_id === "string" ? parsed.session_id : null;
+        return sessionIdOf(JSON.parse(raw)) || null;
     }
     catch {
         return null;
