@@ -16,7 +16,7 @@ if (!fs.existsSync(source)) {
 // Version banner: repo-scoped bootstrap commands grep for this marker to
 // detect a stale cached hook and re-download. Bump when the hook changes in a
 // way repo configs must pick up.
-const BANNER = "// gbird-hook v1\n";
+const BANNER = "// gbird-hook v2\n";
 fs.mkdirSync(path.dirname(target), { recursive: true });
 fs.copyFileSync(source, target);
 const body = fs.readFileSync(target, "utf8");
