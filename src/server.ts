@@ -200,7 +200,7 @@ function hooksConfig(baseUrl: string, token: string): unknown {
 function repoInstallPrompt(tracesRepo: string): string {
   const record = (agent: string) => `GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record`;
   const bootstrap = (agent: string) =>
-    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "gbird-hook v1" "$HOME/.gbird/gbird-hook.mjs") || { curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/main/hooks/gbird-hook.mjs -o "$HOME/.gbird/gbird-hook.mjs.tmp" && mv "$HOME/.gbird/gbird-hook.mjs.tmp" "$HOME/.gbird/gbird-hook.mjs"; }; } && ${record(agent)} || true`;
+    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "gbird-hook v1" "$HOME/.gbird/gbird-hook.mjs") || { curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/74df8aff227e50fc8771edf236a343af8ea8cf0a/hooks/gbird-hook.mjs -o "$HOME/.gbird/gbird-hook.mjs.tmp" && mv "$HOME/.gbird/gbird-hook.mjs.tmp" "$HOME/.gbird/gbird-hook.mjs"; }; } && ${record(agent)} || true`;
   const ship = (agent: string) => `GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship`;
   const devinEvent = (command: string) =>
     `{ "matcher": "", "hooks": [{ "type": "command", "command": "${command.replaceAll('"', '\\"')}" }] }`;
