@@ -19,11 +19,14 @@ const HOOK_URL =
   "https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs";
 
 export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
-  const record = (agent: string) => `GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record`;
-  const bootstrap = (agent: string) =>
-    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "${HOOK_VERSION_MARKER}" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL ${HOOK_URL} -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; } && ${record(agent)} || true`;
+  // Every hook command re-verifies the runtime before running it: a failed
+  // SessionStart download must not wedge capture for the whole session.
+  const ensure =
+    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "${HOOK_VERSION_MARKER}" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL ${HOOK_URL} -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; }`;
+  const record = (agent: string) => `${ensure} && GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record || true`;
+  const bootstrap = record;
   const ship = (agent: string) =>
-    `GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship`;
+    `${ensure} && GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship || true`;
   const devinEvent = (command: string) => ({ matcher: "", hooks: [{ type: "command", command }] });
 
   return {
