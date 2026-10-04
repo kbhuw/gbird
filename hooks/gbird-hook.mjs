@@ -1,3 +1,4 @@
+// gbird-hook v1
 // gbird hook runtime — self-contained (no imports outside node builtins) so the
 // compiled single file can be copied onto any agent machine as gbird-hook.mjs.
 //
