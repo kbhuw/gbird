@@ -20,9 +20,10 @@ const HOOK_URL =
 
 export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   // Every hook command re-verifies the runtime before running it: a failed
-  // SessionStart download must not wedge capture for the whole session.
+  // SessionStart download must not wedge capture for the whole session, and the
+  // curl is time-bounded so an unresponsive endpoint cannot stall the agent.
   const ensure =
-    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "${HOOK_VERSION_MARKER}" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL ${HOOK_URL} -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; }`;
+    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "${HOOK_VERSION_MARKER}" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL --connect-timeout 3 --max-time 15 ${HOOK_URL} -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; }`;
   const record = (agent: string) => `${ensure} && GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record || true`;
   const bootstrap = record;
   const ship = (agent: string) =>
