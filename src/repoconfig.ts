@@ -12,9 +12,9 @@ export interface RepoHookConfigs {
   cursor: string;
 }
 
-const HOOK_VERSION_MARKER = "gbird-hook v1";
+const HOOK_VERSION_MARKER = "gbird-hook v2";
 const HOOK_URL =
-  "https://raw.githubusercontent.com/kbhuw/gbird/74df8aff227e50fc8771edf236a343af8ea8cf0a/hooks/gbird-hook.mjs";
+  "https://raw.githubusercontent.com/kbhuw/gbird/e842f0594027b6900927760c4d73f2bd0adce3c8/hooks/gbird-hook.mjs";
 
 export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   const record = (agent: string) => `GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record`;

@@ -1,4 +1,4 @@
-// gbird-hook v1
+// gbird-hook v2
 // gbird hook runtime — self-contained (no imports outside node builtins) so the
 // compiled single file can be copied onto any agent machine as gbird-hook.mjs.
 //
@@ -89,6 +89,40 @@ function sessionIdOf(payload) {
     }
     return "";
 }
+/** Agent/model-identifying env vars; secret-looking values are replaced. */
+const ENV_PREFIX = /^(GBIRD|CLAUDE|CURSOR|DEVIN|ANTHROPIC|OPENAI|CODEX|WINDSURF|GEMINI|COPILOT)_/;
+const SECRETISH = /key|token|secret|password|credential|auth/i;
+function envSnapshot() {
+    const out = {};
+    for (const [key, value] of Object.entries(process.env)) {
+        if (!ENV_PREFIX.test(key) || value === undefined)
+            continue;
+        out[key] = SECRETISH.test(key) ? "[redacted]" : value;
+    }
+    return out;
+}
+function modelName() {
+    for (const key of ["GBIRD_MODEL", "ANTHROPIC_MODEL", "OPENAI_MODEL", "CLAUDE_CODE_MODEL", "CURSOR_MODEL", "DEVIN_MODE", "CODEX_MODEL", "GEMINI_MODEL"]) {
+        const value = process.env[key];
+        if (value)
+            return value;
+    }
+    return null;
+}
+function gitUserEmail() {
+    try {
+        const email = execFileSync("git", ["config", "--global", "user.email"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+        return email || null;
+    }
+    catch {
+        return null;
+    }
+}
+/** Claude/Cursor hook payloads carry transcript_path: the whole conversation file. */
+function transcriptPathOf(payload) {
+    const value = payload.transcript_path ?? payload.transcriptPath;
+    return typeof value === "string" && value ? value : null;
+}
 /** Map one hook stdin payload to a TimelineEvent. */
 function toTimelineEvent(payload) {
     const sessionId = sessionIdOf(payload);
@@ -98,7 +132,7 @@ function toTimelineEvent(payload) {
     const eventName = EVENT_ALIASES[rawName] ?? rawName;
     const base = baseEvent(payload, sessionId);
     const promptId = typeof payload.prompt_id === "string" ? payload.prompt_id : null;
-    const shared = { promptId, hookEvent: eventName };
+    const shared = { promptId, hookEvent: eventName, transcriptPath: transcriptPathOf(payload) };
     switch (eventName) {
         case "SessionStart":
             return { ...base, id: stableId(sessionId, "session_start"), type: "session_started", title: "Session started", status: "started", data: shared };
@@ -207,6 +241,50 @@ function writeJsonAtomic(filename, value) {
     fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
     fs.renameSync(temp, filename);
 }
+/**
+ * Full conversation text when the harness exposes one (transcript_path in the
+ * hook payload — Claude Code and Cursor both emit it). Reads the tail of the
+ * file if it exceeds 4 MB; returns [] when unavailable.
+ */
+function loadTranscript(events) {
+    const last = [...events].reverse().find((event) => typeof event.data.transcriptPath === "string" && event.data.transcriptPath);
+    const file = last?.data.transcriptPath;
+    if (!file)
+        return [];
+    try {
+        if (!fs.existsSync(file))
+            return [];
+        const MAX = 4 * 1024 * 1024;
+        const size = fs.statSync(file).size;
+        const offset = size > MAX ? size - MAX : 0;
+        const buffer = Buffer.alloc(Math.min(size, MAX));
+        const fd = fs.openSync(file, "r");
+        try {
+            fs.readSync(fd, buffer, 0, buffer.length, offset);
+        }
+        finally {
+            fs.closeSync(fd);
+        }
+        let text = buffer.toString("utf8");
+        if (offset > 0)
+            text = text.slice(text.indexOf("\n") + 1); // drop partial first line
+        const entries = [];
+        for (const line of text.split(/\r?\n/)) {
+            if (!line.trim())
+                continue;
+            try {
+                entries.push(JSON.parse(line));
+            }
+            catch { /* skip corrupt lines */ }
+            if (entries.length >= 5000)
+                break;
+        }
+        return entries;
+    }
+    catch {
+        return [];
+    }
+}
 let cachedMember = null;
 /** Who this trace belongs to: the gh-authenticated user, else the OS user. */
 function memberName() {
@@ -241,7 +319,10 @@ function assemble(agent, sessionId, events) {
     const startedAt = sorted[0]?.occurredAt ?? new Date().toISOString();
     const updatedAt = sorted[sorted.length - 1]?.occurredAt ?? startedAt;
     const prompt = typeof firstPrompt?.data.message === "string" ? firstPrompt.data.message : null;
-    return {
+    const member = memberName();
+    const model = modelName();
+    const transcript = loadTranscript(sorted);
+    const assembled = {
         session: {
             schemaVersion: 1,
             agent,
@@ -257,11 +338,23 @@ function assemble(agent, sessionId, events) {
             url: null,
             repositories: [],
             pullRequests: [],
-            tags: ["capture:hook", `member:${memberName()}`],
-            raw: { capture: "hook", sessionId },
+            tags: ["capture:hook", `member:${member}`, ...(model ? [`model:${model}`] : [])],
+            raw: {
+                capture: "hook",
+                sessionId,
+                member,
+                osUser: process.env.USER ?? process.env.USERNAME ?? null,
+                gitEmail: gitUserEmail(),
+                hostname: os.hostname(),
+                model,
+                env: envSnapshot(),
+            },
         },
         events: sorted,
     };
+    if (transcript.length)
+        assembled.transcript = transcript;
+    return assembled;
 }
 function updateIndex(session, eventCount, relativePath) {
     const indexPath = path.join(storeDir(), "index.json");

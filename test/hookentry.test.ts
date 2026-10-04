@@ -71,6 +71,37 @@ test("record appends hook events and collect assembles a session file", () => {
   assert.equal(index.sessions[sid].eventCount, 4);
 });
 
+test("collect embeds transcript_path contents and identity metadata", () => {
+  const dir = tmpDir();
+  const sid = "claude-sess-1";
+  const transcript = path.join(dir, "transcript.jsonl");
+  fs.writeFileSync(transcript, [
+    JSON.stringify({ type: "user", message: { content: "hello" } }),
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hi there" }] } }),
+    "",
+  ].join("\n"));
+
+  runHook(dir, ["record"], JSON.stringify({
+    hook_event_name: "SessionStart",
+    session_id: sid,
+    transcript_path: transcript,
+  }));
+  runHook(dir, ["record"], JSON.stringify({
+    hook_event_name: "SessionEnd",
+    session_id: sid,
+    reason: "completed",
+    transcript_path: transcript,
+  }));
+  runHook(dir, ["collect"]);
+
+  const file = path.join(dir, "sessions", "devin", `${sid}.json`);
+  const timeline = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.equal(timeline.transcript.length, 2);
+  assert.equal(timeline.transcript[1].message.content[0].text, "hi there");
+  assert.equal(timeline.session.raw.member.length > 0, true);
+  assert.ok("env" in timeline.session.raw);
+});
+
 test("record ignores malformed input instead of failing", () => {
   const dir = tmpDir();
   runHook(dir, ["record"], "not json at all" as unknown as string);
