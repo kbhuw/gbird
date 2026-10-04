@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { loadMembers, memberByToken, mintMember } from "./members.js";
 import type { SessionTimeline } from "./schema.js";
 import { TraceStore, type SessionListItem } from "./tracestore.js";
+import { repoHookConfigs } from "./repoconfig.js";
 
 export interface ServerOptions {
   dir: string;
@@ -198,35 +199,7 @@ function hooksConfig(baseUrl: string, token: string): unknown {
 }
 
 function repoInstallPrompt(tracesRepo: string): string {
-  const record = (agent: string) => `GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record`;
-  const bootstrap = (agent: string) =>
-    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "gbird-hook v1" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/74df8aff227e50fc8771edf236a343af8ea8cf0a/hooks/gbird-hook.mjs -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; } && ${record(agent)} || true`;
-  const ship = (agent: string) => `GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship`;
-  const devinEvent = (command: string) =>
-    `{ "matcher": "", "hooks": [{ "type": "command", "command": "${command.replaceAll('"', '\\"')}" }] }`;
-  const claude = JSON.stringify({
-    hooks: {
-      SessionStart: [{ matcher: "", hooks: [{ type: "command", command: bootstrap("claude") }] }],
-      UserPromptSubmit: [{ matcher: "", hooks: [{ type: "command", command: record("claude") }] }],
-      PostToolUse: [{ matcher: "", hooks: [{ type: "command", command: record("claude") }] }],
-      SessionEnd: [{ matcher: "", hooks: [{ type: "command", command: ship("claude") }] }],
-    },
-  }, null, 2);
-  const devin = JSON.stringify({
-    SessionStart: [JSON.parse(devinEvent(bootstrap("devin")))],
-    UserPromptSubmit: [JSON.parse(devinEvent(record("devin")))],
-    PostToolUse: [JSON.parse(devinEvent(record("devin")))],
-    SessionEnd: [JSON.parse(devinEvent(ship("devin")))],
-  }, null, 2);
-  const cursor = JSON.stringify({
-    version: 1,
-    hooks: {
-      sessionStart: [{ command: bootstrap("cursor") }],
-      beforeSubmitPrompt: [{ command: record("cursor") }],
-      postToolUse: [{ command: record("cursor") }],
-      sessionEnd: [{ command: ship("cursor") }],
-    },
-  }, null, 2);
+  const { devin, claude, cursor } = repoHookConfigs(tracesRepo);
 
   return `You are installing gbird trace capture ON THIS REPOSITORY.
 From now on, any coding agent that works on this repo will have its session
