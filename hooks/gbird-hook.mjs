@@ -171,6 +171,33 @@ function writeJsonAtomic(filename, value) {
     fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
     fs.renameSync(temp, filename);
 }
+let cachedMember = null;
+/** Who this trace belongs to: the gh-authenticated user, else the OS user. */
+function memberName() {
+    if (cachedMember)
+        return cachedMember;
+    cachedMember = process.env.GBIRD_MEMBER ?? "";
+    if (!cachedMember) {
+        try {
+            cachedMember = execFileSync("gh", ["api", "user", "--jq", ".login"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+        }
+        catch {
+            cachedMember = "";
+        }
+    }
+    if (!cachedMember) {
+        try {
+            const out = execFileSync("gh", ["auth", "status"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+            cachedMember = /account (\S+)/.exec(out)?.[1] ?? "";
+        }
+        catch {
+            cachedMember = "";
+        }
+    }
+    if (!cachedMember)
+        cachedMember = process.env.USER ?? process.env.USERNAME ?? "unknown";
+    return cachedMember;
+}
 function assemble(agent, sessionId, events) {
     const sorted = [...events].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id));
     const firstPrompt = sorted.find((event) => event.type === "message_created" && event.data.messageSource === "user");
@@ -194,7 +221,7 @@ function assemble(agent, sessionId, events) {
             url: null,
             repositories: [],
             pullRequests: [],
-            tags: ["capture:hook"],
+            tags: ["capture:hook", `member:${memberName()}`],
             raw: { capture: "hook", sessionId },
         },
         events: sorted,
@@ -293,17 +320,20 @@ function shipGitHub(sessionId) {
     if (!fs.existsSync(file))
         return false;
     const content = fs.readFileSync(file).toString("base64");
-    const remotePath = `sessions/${agentKind()}/${safeName(sessionId)}.json`;
+    const remotePath = `sessions/${safeName(memberName())}/${agentKind()}/${safeName(sessionId)}.json`;
     try {
+        const branch = process.env.GBIRD_REPO_BRANCH;
         let sha = null;
         try {
-            const out = execFileSync("gh", ["api", `repos/${repo}/contents/${remotePath}`, "--jq", ".sha"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+            const out = execFileSync("gh", ["api", `repos/${repo}/contents/${remotePath}${branch ? `?ref=${branch}` : ""}`, "--jq", ".sha"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
             sha = out.trim() || null;
         }
         catch { /* file does not exist yet */ }
         const args = ["api", `repos/${repo}/contents/${remotePath}`, "-X", "PUT", "-f", `message=trace: ${sessionId}`, "--raw-field", `content=${content}`];
         if (sha)
             args.push("--raw-field", `sha=${sha}`);
+        if (branch)
+            args.push("-f", `branch=${branch}`);
         execFileSync("gh", args, { stdio: ["ignore", "pipe", "ignore"] });
         return true;
     }
