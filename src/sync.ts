@@ -1,6 +1,7 @@
 import { DevinClient, normalizeDevinSession, type DevinMessageResponse } from "./devin.js";
 import { GitHubClient } from "./github.js";
-import { TimelineStore } from "./store.js";
+import { isoTimestamp } from "./schema.js";
+import type { TraceStore } from "./tracestore.js";
 
 export interface SyncProgress {
   completed: number;
@@ -11,16 +12,19 @@ export interface SyncProgress {
 
 export interface SyncSummary {
   sessions: number;
+  skipped: number;
   events: number;
   githubPullRequests: number;
   errors: Array<{ sessionId: string; source: string; message: string }>;
 }
 
 export interface SyncOptions {
-  store: TimelineStore;
+  store: TraceStore;
   devin: DevinClient;
   github?: GitHubClient;
   limit?: number;
+  /** Re-pull every listed session even when its updated_at is unchanged. */
+  force?: boolean;
   onProgress?: (progress: SyncProgress) => void;
 }
 
@@ -28,12 +32,20 @@ export async function syncTimeline(options: SyncOptions): Promise<SyncSummary> {
   const rawSessions = await options.devin.listSessions(options.limit ?? 50);
   const summary: SyncSummary = {
     sessions: 0,
+    skipped: 0,
     events: 0,
     githubPullRequests: 0,
     errors: [],
   };
 
   for (const [index, rawSession] of rawSessions.entries()) {
+    const remoteUpdatedAt = isoTimestamp(rawSession.updated_at ?? rawSession.created_at);
+    const stored = options.store.getMeta(rawSession.session_id);
+    if (!options.force && stored && stored.updatedAt === remoteUpdatedAt) {
+      summary.skipped += 1;
+      continue;
+    }
+
     let messages: DevinMessageResponse[] = [];
     try {
       messages = await options.devin.listMessages(rawSession.session_id);

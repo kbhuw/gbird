@@ -1,21 +1,19 @@
 {
   "name": "gbird",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "gbird": "dist/src/cli.js"
+  },
   "engines": {
     "node": ">=22.5"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
-    "plugin:package": "npm run build && node scripts/package-plugin.mjs",
-    "report": "node dist/src/cli.js report",
-    "dev": "node --import tsx src/cli.ts serve --demo",
-    "start": "node dist/src/cli.js serve",
-    "start:secure": "npx -y @puffle/secret-valet exec devin/timeline -- node dist/src/cli.js serve",
-    "sync": "node --import tsx src/cli.ts sync",
-    "sync:codex": "node --import tsx src/cli.ts sync-codex",
-    "sync:secure": "npx -y @puffle/secret-valet exec devin/timeline -- node --import tsx src/cli.ts sync",
+    "build": "tsc -p tsconfig.json && node scripts/build-hook.mjs",
+    "pull": "node --import tsx src/cli.ts pull",
+    "pull:secure": "npx -y @puffle/secret-valet exec devin/timeline -- node --import tsx src/cli.ts pull",
+    "list": "node --import tsx src/cli.ts list",
     "secret:save": "npx -y @puffle/secret-valet prompt devin/timeline",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/*.test.ts"

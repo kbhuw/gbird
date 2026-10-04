@@ -1,425 +1,334 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import http, { type IncomingMessage, type ServerResponse } from "node:http";
-import os from "node:os";
+import http from "node:http";
 import path from "node:path";
-import {
-  codexSkillAvailable,
-  createCodexSkillAnalyzer,
-  timelineHash,
-  type AnalyzeSession,
-} from "./analyzer.js";
-import { sessionWithAnalysisState } from "./analysis-state.js";
-import { syncCodexTimeline, type CodexSyncSummary } from "./codex.js";
-import { DevinClient } from "./devin.js";
-import { GitHubClient } from "./github.js";
-import { generateRepoReport, repoReportIsStale } from "./repo-report.js";
-import { resolveRepoScope } from "./repo-scope.js";
-import { renderRepoReportHtml } from "./report-html.js";
-import { createCodexRepoReporter, type AnalyzeRepo } from "./reporter.js";
-import { TimelineStore } from "./store.js";
-import { syncTimeline, type SyncSummary } from "./sync.js";
-import type { AgentKind, StoredRepoReport } from "./schema.js";
+import { fileURLToPath } from "node:url";
+import { loadMembers, memberByToken, mintMember } from "./members.js";
+import type { SessionTimeline } from "./schema.js";
+import { TraceStore, type SessionListItem } from "./tracestore.js";
 
 export interface ServerOptions {
-  store: TimelineStore;
-  host?: string;
-  port?: number;
-  syncLimit?: number;
-  codexSyncLimit?: number;
-  demo?: boolean;
-  analyzeSession?: AnalyzeSession;
-  analyzeRepo?: AnalyzeRepo;
-  projectRoot?: string;
+  dir: string;
+  adminToken?: string | null;
+  hookScriptPath?: string | null;
+  baseUrl?: string;
 }
 
-export interface RunningServer {
-  url: URL;
-  close: () => Promise<void>;
+// dist/src/server.js → repo root is two levels up; src/server.ts (tsx) resolves
+// one level up but hits the same real files via the hooks/ candidate first.
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+function defaultHookScript(): string | null {
+  for (const candidate of [
+    path.join(REPO_ROOT, "hooks", "gbird-hook.mjs"),
+    path.join(REPO_ROOT, "dist", "src", "hookentry.js"),
+  ]) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
-function devinApiKey(): string | undefined {
-  return process.env.DEVIN_API_KEY ?? process.env.SECRET;
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-function securityHeaders(response: ServerResponse): void {
-  response.setHeader("x-content-type-options", "nosniff");
-  response.setHeader("x-frame-options", "DENY");
-  response.setHeader("referrer-policy", "no-referrer");
-  response.setHeader("cache-control", "no-store");
-  response.setHeader(
-    "content-security-policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cognition.com https://www.greptile.com https://cdn.prod.website-files.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+function json(res: http.ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+async function readBody(req: http.IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function bearerToken(req: http.IncomingMessage): string {
+  const header = req.headers.authorization ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+}
+
+function isTimeline(value: unknown): value is SessionTimeline {
+  const timeline = value as SessionTimeline;
+  return (
+    typeof timeline === "object" &&
+    timeline !== null &&
+    typeof timeline.session === "object" &&
+    typeof timeline.session?.id === "string" &&
+    typeof timeline.session?.agent === "string" &&
+    Array.isArray(timeline.events)
   );
 }
 
-function json(response: ServerResponse, status: number, body: unknown): void {
-  securityHeaders(response);
-  response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-  response.end(JSON.stringify(body));
+const PAGE_CSS = `
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #0d1117; color: #c9d1d9; font-size: 14px; }
+a { color: #58a6ff; text-decoration: none; }
+header { padding: 14px 24px; border-bottom: 1px solid #21262d; display: flex; align-items: baseline; gap: 16px; }
+header h1 { font-size: 16px; margin: 0; color: #f0f6fc; }
+header .sub { color: #8b949e; font-size: 12px; }
+main { padding: 16px 24px; max-width: 1200px; }
+form.filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+input, select { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 13px; }
+input:focus, select:focus { border-color: #58a6ff; outline: none; }
+button { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 6px 10px; border-bottom: 1px solid #21262d; }
+td { padding: 8px 10px; border-bottom: 1px solid #161b22; vertical-align: top; }
+tr:hover td { background: #161b22; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; border: 1px solid #30363d; color: #8b949e; }
+.badge.ended { color: #3fb950; border-color: #238636; }
+.badge.in_progress { color: #d29922; border-color: #9e6a03; }
+.badge.error, .badge.failure { color: #f85149; border-color: #da3633; }
+.mono { font-size: 12px; color: #8b949e; }
+.event { border: 1px solid #21262d; border-radius: 8px; margin-bottom: 8px; }
+.event > summary { padding: 8px 12px; cursor: pointer; display: flex; gap: 10px; align-items: baseline; list-style: none; }
+.event > summary::-webkit-details-marker { display: none; }
+.event .etype { min-width: 140px; }
+.event pre { margin: 0; padding: 10px 12px; border-top: 1px solid #21262d; white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 400px; overflow: auto; }
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 16px; }
+.meta .cell { border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px; }
+.meta .k { color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.meta .v { margin-top: 4px; }
+pre.prompt { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; white-space: pre-wrap; font-size: 13px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #8b949e; }
+.empty { color: #8b949e; padding: 40px 0; text-align: center; }
+`;
+
+function page(title: string, body: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · gbird</title><style>${PAGE_CSS}</style></head><body><header><h1>gbird</h1><span class="sub">${escapeHtml(title)}</span></header><main>${body}</main></body></html>`;
 }
 
-function text(response: ServerResponse, status: number, body: string, contentType = "text/plain; charset=utf-8"): void {
-  securityHeaders(response);
-  response.writeHead(status, { "content-type": contentType });
-  response.end(body);
+function statusBadge(status: string): string {
+  const cls = status.replace(/[^a-z_]/g, "");
+  return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
 }
 
-function githubAvailable(): boolean {
-  try {
-    execFileSync("gh", ["auth", "status"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+function renderIndex(store: TraceStore, members: ReturnType<typeof loadMembers>, url: URL): string {
+  const member = url.searchParams.get("member") ?? undefined;
+  const agent = url.searchParams.get("agent") ?? undefined;
+  const query = url.searchParams.get("q") ?? undefined;
+  const sessions = store.listSessions({ member, agent: agent as "devin" | "codex" | undefined, query });
+
+  const memberOptions = [`<option value="">everyone</option>`]
+    .concat(members.map((m) => `<option value="${escapeHtml(m.name)}"${m.name === member ? " selected" : ""}>${escapeHtml(m.name)}</option>`))
+    .join("");
+  const agentOptions = ["", "devin", "codex"]
+    .map((a) => `<option value="${a}"${a === (agent ?? "") ? " selected" : ""}>${a || "all agents"}</option>`)
+    .join("");
+
+  const rows = sessions
+    .map(
+      (s) => `<tr>
+        <td class="mono">${escapeHtml(s.member ?? "—")}</td>
+        <td class="mono">${escapeHtml(s.agent)}</td>
+        <td><a href="/s/${encodeURIComponent(s.id)}">${escapeHtml(s.title || s.id)}</a><div class="mono">${escapeHtml(s.repositories.join(", "))}</div></td>
+        <td>${statusBadge(s.status)}</td>
+        <td class="mono">${escapeHtml(s.startedAt.slice(0, 16).replace("T", " "))}</td>
+        <td class="mono">${s.eventCount}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const table = sessions.length
+    ? `<table><tr><th>member</th><th>agent</th><th>session</th><th>status</th><th>started</th><th>events</th></tr>${rows}</table>`
+    : `<div class="empty">No traces yet. Run <code>gbird invite &lt;name&gt;</code> to onboard someone.</div>`;
+
+  return page(
+    "traces",
+    `<form class="filters" method="get" action="/">
+      <select name="member">${memberOptions}</select>
+      <select name="agent">${agentOptions}</select>
+      <input name="q" placeholder="search titles" value="${escapeHtml(query ?? "")}">
+      <button type="submit">filter</button>
+      <span class="mono" style="align-self:center">${sessions.length} session(s)</span>
+    </form>${table}`,
+  );
 }
 
-function safeFilename(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "session";
+function renderDetail(store: TraceStore, id: string): string {
+  const timeline = store.getTimeline(id);
+  if (!timeline) return page("not found", `<div class="empty">Unknown session <code>${escapeHtml(id)}</code>. <a href="/">Back</a></div>`);
+  const { session } = timeline;
+  const meta = store.getMeta(id);
+
+  const events = timeline.events
+    .map((e) => {
+      const statusCls = e.status === "failure" || e.status === "error" ? "failure" : "";
+      return `<details class="event"><summary>
+        <span class="badge etype">${escapeHtml(e.type)}</span>
+        ${statusCls ? `<span class="badge ${statusCls}">${escapeHtml(e.status ?? "")}</span>` : ""}
+        <span>${escapeHtml(e.title)}</span>
+        <span class="mono">${escapeHtml(e.occurredAt.slice(0, 19).replace("T", " "))}</span>
+      </summary><pre>${escapeHtml(JSON.stringify(e.data, null, 2))}</pre></details>`;
+    })
+    .join("");
+
+  const cell = (k: string, v: string) => `<div class="cell"><div class="k">${k}</div><div class="v">${escapeHtml(v) || "—"}</div></div>`;
+  return page(
+    session.title || id,
+    `<div class="meta">
+      ${cell("member", meta?.member ?? "")}
+      ${cell("agent", session.agent)}
+      ${cell("status", session.statusDetail ?? session.status)}
+      ${cell("started", session.startedAt.slice(0, 19).replace("T", " "))}
+      ${cell("repos", session.repositories.join(", "))}
+      ${cell("events", String(timeline.events.length))}
+      ${cell("session id", id)}
+      ${session.url ? `<div class="cell"><div class="k">url</div><div class="v"><a href="${escapeHtml(session.url)}">link</a></div></div>` : ""}
+    </div>
+    ${session.prompt ? `<h2>prompt</h2><pre class="prompt">${escapeHtml(session.prompt)}</pre>` : ""}
+    <h2>events</h2>${events || `<div class="empty">no events</div>`}`,
+  );
 }
 
-function savedReportPath(repo: string): string | null {
-  const parts = repo.split("/");
-  if (parts.length !== 2 || !parts.every((part) => /^[a-zA-Z0-9._-]+$/.test(part))) return null;
-  return path.join(os.homedir(), ".gbird", "reports", `${parts[0]}--${parts[1]}`, "report.html");
-}
-
-function requestedAgent(url: URL): AgentKind | undefined {
-  const value = url.searchParams.get("agent");
-  return value === "codex" || value === "devin" ? value : undefined;
-}
-
-function sameOrigin(request: IncomingMessage, url: URL): boolean {
-  const origin = request.headers.origin;
-  return !origin || new URL(origin).host === url.host;
-}
-
-export async function startServer(options: ServerOptions): Promise<RunningServer> {
-  const host = options.host ?? "127.0.0.1";
-  const uiPath = path.join(import.meta.dirname, "ui", "index.html");
-  const aboutPath = path.join(import.meta.dirname, "ui", "about.html");
-  const hasGithub = githubAvailable();
-  const codexRoot = process.env.CODEX_SESSIONS_ROOT ?? path.join(os.homedir(), ".codex", "sessions");
-  const hasCodex = fs.existsSync(codexRoot);
-  const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
-  const hasAnalyzer = Boolean(options.analyzeSession) || codexSkillAvailable({ projectRoot });
-  const analyzeSession = options.analyzeSession ?? createCodexSkillAnalyzer({ projectRoot });
-  const analyzeRepo = options.analyzeRepo ?? createCodexRepoReporter({ projectRoot });
-  let activeDevinSync: Promise<SyncSummary> | null = null;
-  let activeCodexSync: Promise<CodexSyncSummary> | null = null;
-  const activeAnalyses = new Map<string, Promise<ReturnType<TimelineStore["getAnalysis"]>>>();
-  const activeReports = new Map<string, Promise<StoredRepoReport>>();
-
-  const runDevinSync = (): Promise<SyncSummary> => {
-    if (activeDevinSync) return activeDevinSync;
-    const apiKey = devinApiKey();
-    const orgId = process.env.DEVIN_ORG_ID;
-    if (!apiKey || !orgId) {
-      return Promise.reject(new Error("Set DEVIN_API_KEY and DEVIN_ORG_ID to import sessions."));
-    }
-    activeDevinSync = syncTimeline({
-      store: options.store,
-      devin: new DevinClient({ apiKey, orgId }),
-      github: hasGithub ? new GitHubClient() : undefined,
-      limit: options.syncLimit ?? Number(process.env.DEVIN_SYNC_LIMIT ?? 50),
-    }).finally(() => {
-      activeDevinSync = null;
-    });
-    return activeDevinSync;
-  };
-
-  const runCodexSync = (): Promise<CodexSyncSummary> => {
-    if (activeCodexSync) return activeCodexSync;
-    const configuredRoot = process.env.CODEX_SESSIONS_ROOT;
-    activeCodexSync = syncCodexTimeline({
-      store: options.store,
-      limit: options.codexSyncLimit ?? Number(process.env.CODEX_SYNC_LIMIT ?? 50),
-      roots: configuredRoot
-        ? [path.resolve(configuredRoot)]
-        : [path.join(os.homedir(), ".codex", "sessions"), path.join(os.homedir(), ".codex", "archived_sessions")],
-    }).finally(() => {
-      activeCodexSync = null;
-    });
-    return activeCodexSync;
-  };
-
-  const runAvailableSyncs = async (): Promise<Record<string, SyncSummary | CodexSyncSummary>> => {
-    const summaries: Record<string, SyncSummary | CodexSyncSummary> = {};
-    if (hasCodex) summaries.codex = await runCodexSync();
-    if (devinApiKey() && process.env.DEVIN_ORG_ID) summaries.devin = await runDevinSync();
-    if (!Object.keys(summaries).length) throw new Error("No agent sources are configured.");
-    return summaries;
-  };
-
-  const server = http.createServer(async (request: IncomingMessage, response: ServerResponse) => {
-    try {
-      const url = new URL(request.url ?? "/", `http://${request.headers.host ?? host}`);
-      if (request.method === "GET" && url.pathname === "/") {
-        text(response, 200, fs.readFileSync(uiPath, "utf8"), "text/html; charset=utf-8");
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/about") {
-        text(response, 200, fs.readFileSync(aboutPath, "utf8"), "text/html; charset=utf-8");
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/report") {
-        const repo = url.searchParams.get("repo");
-        if (!repo) {
-          text(response, 400, "Choose a repository first.");
-          return;
-        }
-        const savedPath = savedReportPath(repo);
-        if (savedPath && fs.existsSync(savedPath)) {
-          text(response, 200, fs.readFileSync(savedPath, "utf8"), "text/html; charset=utf-8");
-          return;
-        }
-        const stored = options.store.getRepoReport(repo);
-        if (!stored) {
-          text(response, 404, "No failure report has been generated for this repository.");
-          return;
-        }
-        text(response, 200, renderRepoReportHtml(stored), "text/html; charset=utf-8");
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/state") {
-        json(response, 200, {
-          configured: Boolean(devinApiKey() && process.env.DEVIN_ORG_ID),
-          codexConfigured: hasCodex,
-          githubConfigured: hasGithub,
-          analysisConfigured: hasAnalyzer,
-          reportConfigured: hasAnalyzer,
-          syncing: Boolean(activeDevinSync || activeCodexSync),
-          syncingAgent: activeCodexSync ? "codex" : activeDevinSync ? "devin" : null,
-          demo: Boolean(options.demo),
-          sessionCount: options.store.countSessions(),
-          sessionCounts: {
-            devin: options.store.countSessions("devin"),
-            codex: options.store.countSessions("codex"),
-          },
-        });
-        return;
-      }
-
-      const reportExportMatch = /^\/api\/reports\/([^/]+)\/export$/.exec(url.pathname);
-      if (request.method === "GET" && reportExportMatch?.[1]) {
-        const repo = decodeURIComponent(reportExportMatch[1]);
-        const stored = options.store.getRepoReport(repo);
-        if (!stored) {
-          json(response, 404, { error: "Repo report not found." });
-          return;
-        }
-        securityHeaders(response);
-        response.writeHead(200, {
-          "content-type": "application/json; charset=utf-8",
-          "content-disposition": `attachment; filename="${safeFilename(repo)}-gbird-report.json"`,
-        });
-        response.end(JSON.stringify(stored.report, null, 2));
-        return;
-      }
-
-      const reportMatch = /^\/api\/reports\/([^/]+)$/.exec(url.pathname);
-      if ((request.method === "GET" || request.method === "POST") && reportMatch?.[1]) {
-        const repo = decodeURIComponent(reportMatch[1]);
-        if (request.method === "GET") {
-          const stored = options.store.getRepoReport(repo);
-          const savedPath = savedReportPath(repo);
-          const existingReport = Boolean(stored || (savedPath && fs.existsSync(savedPath)));
-          json(response, 200, {
-            report: stored?.report ?? null,
-            createdAt: stored?.createdAt ?? null,
-            analyzer: stored?.analyzer ?? null,
-            stale: stored ? repoReportIsStale(options.store, stored) : false,
-            existingReport,
-            url: existingReport ? `/report?repo=${encodeURIComponent(repo)}` : null,
-          });
-          return;
-        }
-        if (!sameOrigin(request, url)) {
-          json(response, 403, { error: "Cross-origin requests are not allowed." });
-          return;
-        }
-        if (!hasAnalyzer) {
-          json(response, 503, { error: "The gbird analyzer or Codex CLI is not available." });
-          return;
-        }
-        let active = activeReports.get(repo);
-        if (!active) {
-          const scope = resolveRepoScope(options.store, repo);
-          active = generateRepoReport({
-            store: options.store,
-            repo: scope.canonical,
-            sourceRepositories: scope.repositories,
-            analyzeSession,
-            analyzeRepo,
-          }).finally(() => activeReports.delete(repo));
-          activeReports.set(repo, active);
-        }
-        try {
-          const stored = await active;
-          json(response, 200, {
-            report: stored?.report ?? null,
-            createdAt: stored?.createdAt ?? null,
-            analyzer: stored?.analyzer ?? null,
-            stale: false,
-            url: `/report?repo=${encodeURIComponent(stored.repo)}`,
-          });
-        } catch (error) {
-          json(response, 503, { error: error instanceof Error ? error.message : String(error) });
-        }
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/repos") {
-        json(response, 200, { repos: options.store.listRepos(requestedAgent(url)) });
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/sessions") {
-        const sessions = options.store.listSessions({
-          agent: requestedAgent(url),
-          repo: url.searchParams.get("repo") || undefined,
-          query: url.searchParams.get("q") || undefined,
-        });
-        json(response, 200, {
-          sessions: sessions.map((session) => sessionWithAnalysisState(options.store, session)),
-        });
-        return;
-      }
-
-      const exportMatch = /^\/api\/sessions\/([^/]+)\/export$/.exec(url.pathname);
-      if (request.method === "GET" && exportMatch?.[1]) {
-        const id = decodeURIComponent(exportMatch[1]);
-        const timeline = options.store.getTimeline(id);
-        if (!timeline) {
-          json(response, 404, { error: "Session not found." });
-          return;
-        }
-        securityHeaders(response);
-        response.writeHead(200, {
-          "content-type": "application/json; charset=utf-8",
-          "content-disposition": `attachment; filename="${safeFilename(timeline.session.title)}.json"`,
-        });
-        response.end(JSON.stringify(timeline, null, 2));
-        return;
-      }
-
-      const analysisMatch = /^\/api\/sessions\/([^/]+)\/analysis$/.exec(url.pathname);
-      if ((request.method === "GET" || request.method === "POST") && analysisMatch?.[1]) {
-        const id = decodeURIComponent(analysisMatch[1]);
-        const timeline = options.store.getTimeline(id);
-        if (!timeline) {
-          json(response, 404, { error: "Session not found." });
-          return;
-        }
-        const inputHash = timelineHash(timeline);
-        if (request.method === "GET") {
-          const stored = options.store.getAnalysis(id);
-          json(response, 200, {
-            analysis: stored?.analysis ?? null,
-            createdAt: stored?.createdAt ?? null,
-            analyzer: stored?.analyzer ?? null,
-            stale: Boolean(stored && stored.inputHash !== inputHash),
-          });
-          return;
-        }
-        if (!sameOrigin(request, url)) {
-          json(response, 403, { error: "Cross-origin requests are not allowed." });
-          return;
-        }
-        const existing = options.store.getAnalysis(id);
-        if (existing?.inputHash === inputHash) {
-          json(response, 200, {
-            analysis: existing.analysis,
-            createdAt: existing.createdAt,
-            analyzer: existing.analyzer,
-            stale: false,
-            cached: true,
-          });
-          return;
-        }
-        if (!hasAnalyzer) {
-          json(response, 503, { error: "The coding-session-analyst skill or Codex CLI is not available." });
-          return;
-        }
-        let active = activeAnalyses.get(id);
-        if (!active) {
-          active = analyzeSession(timeline).then((analysis) => {
-            const record = {
-              sessionId: id,
-              inputHash,
-              analyzer: "coding-session-analyst",
-              createdAt: new Date().toISOString(),
-              analysis,
-            };
-            options.store.upsertAnalysis(record);
-            return record;
-          }).finally(() => activeAnalyses.delete(id));
-          activeAnalyses.set(id, active);
-        }
-        try {
-          const stored = await active;
-          json(response, 200, {
-            analysis: stored?.analysis ?? null,
-            createdAt: stored?.createdAt ?? null,
-            analyzer: stored?.analyzer ?? null,
-            stale: false,
-            cached: false,
-          });
-        } catch (error) {
-          json(response, 503, { error: error instanceof Error ? error.message : String(error) });
-        }
-        return;
-      }
-
-      const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
-      if (request.method === "GET" && sessionMatch?.[1]) {
-        const timeline = options.store.getTimeline(decodeURIComponent(sessionMatch[1]));
-        if (!timeline) {
-          json(response, 404, { error: "Session not found." });
-          return;
-        }
-        json(response, 200, timeline);
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/sync") {
-        if (!sameOrigin(request, url)) {
-          json(response, 403, { error: "Cross-origin requests are not allowed." });
-          return;
-        }
-        try {
-          const agent = requestedAgent(url);
-          json(response, 200, await (agent === "codex"
-            ? runCodexSync()
-            : agent === "devin"
-              ? runDevinSync()
-              : runAvailableSyncs()));
-        } catch (error) {
-          json(response, 503, { error: error instanceof Error ? error.message : String(error) });
-        }
-        return;
-      }
-
-      json(response, 404, { error: "Not found." });
-    } catch (error) {
-      json(response, 500, { error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(options.port ?? 4189, host, () => resolve());
-  });
-
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Could not resolve server address.");
+function hooksConfig(baseUrl: string, token: string): unknown {
+  const env = `GBIRD_ENDPOINT=${baseUrl} GBIRD_TOKEN=${token}`;
+  const cmd = (sub: string) => `${env} node "$HOME/.gbird/gbird-hook.mjs" ${sub}`;
   return {
-    url: new URL(`http://${host}:${address.port}`),
-    close: () => new Promise<void>((resolve, reject) => {
-      server.close((error) => error ? reject(error) : resolve());
-    }),
+    SessionStart: [{ matcher: "", hooks: [{ type: "command", command: cmd("record") }] }],
+    UserPromptSubmit: [{ matcher: "", hooks: [{ type: "command", command: cmd("record") }] }],
+    PostToolUse: [{ matcher: "", hooks: [{ type: "command", command: cmd("record") }] }],
+    SessionEnd: [{ matcher: "", hooks: [{ type: "command", command: cmd("ship") }] }],
   };
+}
+
+function installPrompt(baseUrl: string, member: { name: string; token: string }): string {
+  return `You are setting up gbird agent-trace capture for ${member.name} on this machine.
+All traces are sent to ${baseUrl} and are readable at ${baseUrl}/ .
+
+1. Download the hook runtime and your hooks config:
+
+     mkdir -p ~/.gbird
+     curl -fsSL ${baseUrl}/v1/hook.mjs -o ~/.gbird/gbird-hook.mjs
+     curl -fsSL "${baseUrl}/v1/hooks.v1.json?token=${member.token}" -o ~/.gbird/hooks.v1.json
+
+2. Register the hooks with your agent harness (pick what applies):
+
+   - Devin CLI / Desktop: merge ~/.gbird/hooks.v1.json into the "hooks" key of
+     ~/.config/devin/config.json, or copy it to <repo>/.devin/hooks.v1.json for
+     one repository.
+   - Claude Code: merge ~/.gbird/hooks.v1.json into the "hooks" key of
+     ~/.claude/settings.json.
+
+3. Verify: run this, then confirm a test session shows up at ${baseUrl}/ :
+
+     echo '{"hook_event_name":"SessionStart","session_id":"gbird-selftest"}' | GBIRD_ENDPOINT=${baseUrl} GBIRD_TOKEN=${member.token} node ~/.gbird/gbird-hook.mjs record
+     echo '{"hook_event_name":"SessionEnd","session_id":"gbird-selftest","reason":"test"}' | GBIRD_ENDPOINT=${baseUrl} GBIRD_TOKEN=${member.token} node ~/.gbird/gbird-hook.mjs ship
+
+The hook appends each agent event to ~/.gbird/live/ during the session and
+ships the assembled trace at SessionEnd. It never throws — it cannot break
+the agent.
+`;
+}
+
+export function createGbirdServer(options: ServerOptions): http.Server {
+  const store = new TraceStore(options.dir);
+  const dir = options.dir;
+  const adminToken = options.adminToken ?? process.env.GBIRD_ADMIN_TOKEN ?? null;
+  const hookScript = options.hookScriptPath ?? defaultHookScript();
+
+  return http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const baseUrl = options.baseUrl ?? process.env.GBIRD_BASE_URL ?? `${req.headers["x-forwarded-proto"] ?? "http"}://${req.headers.host ?? "localhost"}`;
+      const segments = url.pathname.split("/").filter(Boolean);
+
+      // --- ingest ---
+      if (req.method === "POST" && url.pathname === "/v1/traces") {
+        const member = memberByToken(dir, bearerToken(req));
+        if (!member) return json(res, 401, { error: "unknown token" });
+        const body = await readBody(req);
+        let timeline: unknown;
+        try {
+          timeline = JSON.parse(body);
+        } catch {
+          return json(res, 400, { error: "invalid json" });
+        }
+        if (!isTimeline(timeline)) return json(res, 400, { error: "expected {session, events}" });
+        const existing = store.getMeta(timeline.session.id);
+        if (existing?.member && existing.member !== member.name) {
+          return json(res, 409, { error: "session belongs to another member" });
+        }
+        store.upsertTimeline(timeline, member.name);
+        return json(res, 201, { ok: true, id: timeline.session.id });
+      }
+
+      // --- programmatic access ---
+      if (req.method === "GET" && url.pathname === "/api/sessions") {
+        return json(res, 200, {
+          sessions: store.listSessions({
+            member: url.searchParams.get("member") ?? undefined,
+            agent: (url.searchParams.get("agent") as "devin" | "codex" | null) ?? undefined,
+            repo: url.searchParams.get("repo") ?? undefined,
+            query: url.searchParams.get("q") ?? undefined,
+          }),
+        });
+      }
+      if (req.method === "GET" && segments[0] === "api" && segments[1] === "sessions" && segments[2]) {
+        const timeline = store.getTimeline(decodeURIComponent(segments[2]));
+        if (!timeline) return json(res, 404, { error: "not found" });
+        const meta = store.getMeta(decodeURIComponent(segments[2]));
+        return json(res, 200, { ...timeline, member: meta?.member ?? null });
+      }
+      if (req.method === "GET" && url.pathname === "/api/members") {
+        const members = loadMembers(dir).map(({ token: _token, ...rest }) => rest);
+        return json(res, 200, { members });
+      }
+      if (req.method === "POST" && url.pathname === "/api/members") {
+        if (!adminToken || bearerToken(req) !== adminToken) return json(res, 401, { error: "admin token required" });
+        const { name } = JSON.parse(await readBody(req) || "{}") as { name?: string };
+        if (!name) return json(res, 400, { error: "name required" });
+        const member = mintMember(dir, name);
+        return json(res, 201, { name: member.name, token: member.token, install: `${baseUrl}/install/${member.token}` });
+      }
+
+      // --- hook distribution ---
+      if (req.method === "GET" && url.pathname === "/v1/hook.mjs") {
+        if (!hookScript) return json(res, 404, { error: "hook script not built — run npm run build" });
+        res.writeHead(200, { "content-type": "text/javascript" });
+        return res.end(fs.readFileSync(hookScript));
+      }
+      if (req.method === "GET" && url.pathname === "/v1/hooks.v1.json") {
+        const member = memberByToken(dir, url.searchParams.get("token") ?? "");
+        if (!member) return json(res, 401, { error: "unknown token" });
+        return json(res, 200, hooksConfig(baseUrl, member.token));
+      }
+      if (req.method === "GET" && segments[0] === "install" && segments[1]) {
+        const token = decodeURIComponent(segments[1]).replace(/\.md$/, "");
+        const member = memberByToken(dir, token);
+        if (!member) return json(res, 404, { error: "unknown install token" });
+        const prompt = installPrompt(baseUrl, member);
+        if (url.pathname.endsWith(".md")) {
+          res.writeHead(200, { "content-type": "text/markdown" });
+          return res.end(prompt);
+        }
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end(
+          page(
+            `install · ${member.name}`,
+            `<p>Paste this page's contents (or fetch <a href="/install/${encodeURIComponent(member.token)}.md">the markdown</a>) to the agent whose traces you want captured. It will set itself up.</p><pre class="prompt">${escapeHtml(prompt)}</pre>`,
+          ),
+        );
+      }
+
+      // --- UI ---
+      if (req.method === "GET" && url.pathname === "/") {
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end(renderIndex(store, loadMembers(dir), url));
+      }
+      if (req.method === "GET" && segments[0] === "s" && segments[1]) {
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end(renderDetail(store, decodeURIComponent(segments[1])));
+      }
+
+      json(res, 404, { error: "not found" });
+    } catch (error) {
+      json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    }
+  });
 }

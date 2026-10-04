@@ -9,7 +9,7 @@ import {
   type NormalizedSession,
   type TimelineEvent,
 } from "./schema.js";
-import { TimelineStore } from "./store.js";
+import { TraceStore } from "./tracestore.js";
 
 interface CodexRecord {
   timestamp?: string;
@@ -20,14 +20,17 @@ interface CodexRecord {
 export interface CodexSyncSummary {
   files: number;
   sessions: number;
+  skipped: number;
   events: number;
   skippedLines: number;
 }
 
 export interface CodexSyncOptions {
-  store: TimelineStore;
+  store: TraceStore;
   limit?: number;
   roots?: string[];
+  /** Re-ingest every rollout file even when its contents are unchanged. */
+  force?: boolean;
 }
 
 type RepoResolver = (cwd: string) => string;
@@ -367,17 +370,23 @@ export async function syncCodexTimeline(options: CodexSyncOptions): Promise<Code
     .sort((a, b) => b.modifiedAt - a.modifiedAt)
     .slice(0, options.limit ?? 50);
   let sessions = 0;
+  let skipped = 0;
   let events = 0;
   let skippedLines = 0;
   for (const file of files) {
+    if (!options.force && options.store.lookupSource(file.filename)) {
+      skipped += 1;
+      continue;
+    }
     const parsed = readJsonl(file.filename);
     skippedLines += parsed.skipped;
     const normalized = normalizeCodexRollout(parsed.records, file.filename);
     if (!normalized) continue;
     options.store.upsertSession(normalized.session);
     options.store.replaceEvents(normalized.session.id, normalized.events);
+    options.store.recordSource(file.filename, normalized.session.id);
     sessions += 1;
     events += normalized.events.length;
   }
-  return { files: files.length, sessions, events, skippedLines };
+  return { files: files.length, sessions, skipped, events, skippedLines };
 }
