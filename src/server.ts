@@ -112,12 +112,12 @@ function renderIndex(store: TraceStore, members: ReturnType<typeof loadMembers>,
   const member = url.searchParams.get("member") ?? undefined;
   const agent = url.searchParams.get("agent") ?? undefined;
   const query = url.searchParams.get("q") ?? undefined;
-  const sessions = store.listSessions({ member, agent: agent as "devin" | "codex" | undefined, query });
+  const sessions = store.listSessions({ member, agent: agent as "devin" | "codex" | "claude" | "cursor" | "agent" | undefined, query });
 
   const memberOptions = [`<option value="">everyone</option>`]
     .concat(members.map((m) => `<option value="${escapeHtml(m.name)}"${m.name === member ? " selected" : ""}>${escapeHtml(m.name)}</option>`))
     .join("");
-  const agentOptions = ["", "devin", "codex"]
+  const agentOptions = ["", "devin", "codex", "claude", "cursor", "agent"]
     .map((a) => `<option value="${a}"${a === (agent ?? "") ? " selected" : ""}>${a || "all agents"}</option>`)
     .join("");
 
@@ -136,7 +136,7 @@ function renderIndex(store: TraceStore, members: ReturnType<typeof loadMembers>,
 
   const table = sessions.length
     ? `<table><tr><th>member</th><th>agent</th><th>session</th><th>status</th><th>started</th><th>events</th></tr>${rows}</table>`
-    : `<div class="empty">No traces yet. Run <code>gbird invite &lt;name&gt;</code> to onboard someone.</div>`;
+    : `<div class="empty">No traces yet. To gbird a repo, open <a href="/install">/install</a> and paste the prompt to your coding agent — it commits the hook configs for every harness.</div>`;
 
   return page(
     "traces",
@@ -145,7 +145,7 @@ function renderIndex(store: TraceStore, members: ReturnType<typeof loadMembers>,
       <select name="agent">${agentOptions}</select>
       <input name="q" placeholder="search titles" value="${escapeHtml(query ?? "")}">
       <button type="submit">filter</button>
-      <span class="mono" style="align-self:center">${sessions.length} session(s)</span>
+      <span class="mono" style="align-self:center">${sessions.length} session(s) · <a href="/install">gbird a repo</a></span>
     </form>${table}`,
   );
 }
