@@ -27,7 +27,7 @@
     {
       "matcher": "",
       "hooks": [
-        { "type": "command", "command": "GBIRD_REPO=DevelopIQ-ai/agent-traces node \"$HOME/.gbird/gbird-hook.mjs\" ship" }
+        { "type": "command", "command": "GBIRD_REPO=REPLACE_WITH_YOUR_TRACES_REPO node \"$HOME/.gbird/gbird-hook.mjs\" ship" }
       ]
     }
   ]
