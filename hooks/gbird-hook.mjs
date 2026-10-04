@@ -1,4 +1,4 @@
-// gbird-hook v2
+// gbird-hook v3
 // gbird hook runtime — self-contained (no imports outside node builtins) so the
 // compiled single file can be copied onto any agent machine as gbird-hook.mjs.
 //
@@ -118,9 +118,9 @@ function gitUserEmail() {
         return null;
     }
 }
-/** Claude/Cursor hook payloads carry transcript_path: the whole conversation file. */
+/** Claude/Cursor hook payloads carry transcript_path (Codex: rollout_path). */
 function transcriptPathOf(payload) {
-    const value = payload.transcript_path ?? payload.transcriptPath;
+    const value = payload.transcript_path ?? payload.transcriptPath ?? payload.rollout_path ?? payload.rolloutPath;
     return typeof value === "string" && value ? value : null;
 }
 /** Map one hook stdin payload to a TimelineEvent. */

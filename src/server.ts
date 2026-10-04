@@ -199,7 +199,7 @@ function hooksConfig(baseUrl: string, token: string): unknown {
 }
 
 function repoInstallPrompt(tracesRepo: string): string {
-  const { devin, claude, cursor } = repoHookConfigs(tracesRepo);
+  const { devin, claude, cursor, codex } = repoHookConfigs(tracesRepo);
 
   return `You are installing gbird trace capture ON THIS REPOSITORY.
 From now on, any coding agent that works on this repo will have its session
@@ -225,6 +225,9 @@ ${claude}
    .cursor/hooks.json  (Cursor):
 ${cursor}
 
+   .codex/hooks.json  (Codex CLI — the user trusts the hook once via /hooks):
+${codex}
+
 3. Commit these files to the repo. Anyone who works on it from now on is
    captured automatically — no per-person setup. Traces file under
    sessions/<their-github-username>/<agent>/<id>.json in ${tracesRepo}.
@@ -238,7 +241,8 @@ ${cursor}
    no write access — tell the human.
 
 The hook is fail-open and never throws — it cannot break an agent session.
-Agents without lifecycle hooks (Codex) are covered by 'gbird pull' backfill.
+Devin sessions running in the cloud don't load repo hooks; 'gbird pull'
+backfills them via the Devin API.
 `;
 }
 

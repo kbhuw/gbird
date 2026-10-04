@@ -164,9 +164,9 @@ function gitUserEmail(): string | null {
   }
 }
 
-/** Claude/Cursor hook payloads carry transcript_path: the whole conversation file. */
+/** Claude/Cursor hook payloads carry transcript_path (Codex: rollout_path). */
 function transcriptPathOf(payload: JsonObject): string | null {
-  const value = payload.transcript_path ?? payload.transcriptPath;
+  const value = payload.transcript_path ?? payload.transcriptPath ?? payload.rollout_path ?? payload.rolloutPath;
   return typeof value === "string" && value ? value : null;
 }
 

@@ -10,6 +10,8 @@ export interface RepoHookConfigs {
   claude: string;
   /** .cursor/hooks.json (Cursor). */
   cursor: string;
+  /** .codex/hooks.json (Codex CLI — user trusts the hook once via /hooks). */
+  codex: string;
 }
 
 const HOOK_VERSION_MARKER = "gbird-hook v2";
@@ -55,6 +57,19 @@ export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
           beforeSubmitPrompt: [{ command: record("cursor") }],
           postToolUse: [{ command: record("cursor") }],
           sessionEnd: [{ command: ship("cursor") }],
+        },
+      },
+      null,
+      2,
+    ),
+    codex: JSON.stringify(
+      {
+        description: "gbird agent-trace capture",
+        hooks: {
+          SessionStart: [{ matcher: "startup|resume|clear", hooks: [{ type: "command", command: bootstrap("codex") }] }],
+          UserPromptSubmit: [{ hooks: [{ type: "command", command: record("codex") }] }],
+          PostToolUse: [{ hooks: [{ type: "command", command: record("codex") }] }],
+          SessionEnd: [{ hooks: [{ type: "command", command: ship("codex") }] }],
         },
       },
       null,
