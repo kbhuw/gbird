@@ -5,7 +5,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "mkdir -p \"$HOME/.gbird\" && { ([ -f \"$HOME/.gbird/gbird-hook.mjs\" ] && grep -q \"gbird-hook v2\" \"$HOME/.gbird/gbird-hook.mjs\") || { t=\"$HOME/.gbird/gbird-hook.mjs.$$.tmp\" && curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/e842f0594027b6900927760c4d73f2bd0adce3c8/hooks/gbird-hook.mjs -o \"$t\" && mv -f \"$t\" \"$HOME/.gbird/gbird-hook.mjs\"; }; } && node \"$HOME/.gbird/gbird-hook.mjs\" record || true"
+          "command": "mkdir -p \"$HOME/.gbird\" && { ([ -f \"$HOME/.gbird/gbird-hook.mjs\" ] && grep -q \"gbird-hook v3\" \"$HOME/.gbird/gbird-hook.mjs\") || { t=\"$HOME/.gbird/gbird-hook.mjs.$$.tmp\" && curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs -o \"$t\" && mv -f \"$t\" \"$HOME/.gbird/gbird-hook.mjs\"; }; } && node \"$HOME/.gbird/gbird-hook.mjs\" record || true"
         }
       ]
     }
