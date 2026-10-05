@@ -32,6 +32,17 @@
       ]
     }
   ],
+  "Stop": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "[ \"${GBIRD_HOOKS:-1}\" = \"0\" ] && exit 0; mkdir -p \"$HOME/.gbird\" && { ([ -f \"$HOME/.gbird/gbird-hook.mjs\" ] && grep -q \"gbird-hook v3\" \"$HOME/.gbird/gbird-hook.mjs\") || { t=\"$HOME/.gbird/gbird-hook.mjs.$$.tmp\" && curl -fsSL --connect-timeout 3 --max-time 15 https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs -o \"$t\" && mv -f \"$t\" \"$HOME/.gbird/gbird-hook.mjs\"; }; } && GBIRD_REPO=DevelopIQ-ai/puffle-traces GBIRD_AGENT=devin node \"$HOME/.gbird/gbird-hook.mjs\" ship || true"
+        }
+      ]
+    }
+  ],
   "SessionEnd": [
     {
       "matcher": "",

@@ -26,7 +26,7 @@ The only requirement on a teammate's machine: `gh` authenticated with write acce
 ## Onboarding alternatives
 
 - **Per-person, any harness** — [`hooks/INSTALL.md`](hooks/INSTALL.md) is a prompt, not a readme: a teammate hands it to their agent, which asks which repo to ship to (or `gh repo create`s one), downloads the hook, writes `GBIRD_REPO=<repo>` into `~/.gbird/config.env`, registers the config, and self-tests.
-- **Devin plugin** — this repo *is* a plugin (`.devin-plugin/plugin.json` + root `hooks.json`). Installing `https://github.com/kbhuw/gbird` in Devin CLI/Desktop registers the hooks for every local session on that machine; `~/.gbird/config.env` still provides the repo. Plugin hooks run in local (CLI/Desktop) sessions only, not cloud sessions.
+- **Devin plugin** — this repo *is* a plugin (`.devin-plugin/plugin.json` + root `hooks.json`). Installing `https://github.com/kbhuw/gbird` registers the hooks for every session the install scope covers — including **cloud sessions**, where `command` hooks fire on the session's machine for all events except `SessionStart`/`SessionEnd`. The plugin config ships on `Stop` as well as `SessionEnd`, so cloud sessions (which never fire `SessionEnd`) still push their trace every time the agent settles. `~/.gbird/config.env` still provides the repo.
 
 ## The hook
 
