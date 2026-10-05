@@ -18,7 +18,7 @@ export interface RepoHookConfigs {
   codex: string;
 }
 
-const HOOK_VERSION_MARKER = "gbird-hook v3";
+const HOOK_VERSION_MARKER = "gbird-hook v4";
 const HOOK_URL =
   "https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs";
 
