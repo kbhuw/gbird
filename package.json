@@ -16,11 +16,19 @@
     "list": "node --import tsx src/cli.ts list",
     "secret:save": "npx -y @puffle/secret-valet prompt devin/timeline",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
-  }
+  },
+  "files": [
+    "dist/src",
+    "hooks",
+    "hooks.json",
+    "AGENTS.md",
+    ".devin-plugin"
+  ]
 }

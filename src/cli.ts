@@ -76,6 +76,9 @@ Commands:
     --repo owner/repo      Filter by repository
     --query text           Filter by title
     --json                 Machine-readable output
+  install <traces-repo> Write gbird's hook configs into a repo (run inside it)
+    --root DIR             Target repo root (default: cwd)
+    --dry-run              Report what would change without writing
   show <session-id>     Print one stored trace (session + events)
   hook <sub>            Hook runtime: record | collect [id] | ship [id] (see hooks/)
   serve                 Run the trace server (UI + ingest API)
@@ -221,6 +224,39 @@ async function main(): Promise<void> {
       `${member.name}\n  token:   ${member.token}\n  install: ${baseUrl}/install/${member.token}\n` +
         `  → teammate opens the install URL and hands the prompt to their agent.\n`,
     );
+    return;
+  }
+
+  if (command === "install") {
+    const args = process.argv.slice(3);
+    let positional: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (arg === undefined) continue;
+      if (arg === "--root" || arg === "--traces-repo") i++;
+      else if (!arg.startsWith("-") && positional === undefined) positional = arg;
+    }
+    const tracesRepo = option("--traces-repo") ?? positional ?? process.env.GBIRD_REPO;
+    if (!tracesRepo) {
+      throw new Error("Pass the traces repo: gbird install <owner/repo>.");
+    }
+    const root = path.resolve(option("--root") ?? ".");
+    if (!fs.existsSync(path.join(root, ".git"))) {
+      process.stderr.write(`note: ${root} is not a git repo root; writing anyway.\n`);
+    }
+    const { installIntoRepo } = await import("./install.js");
+    const dry = hasFlag("--dry-run");
+    const results = installIntoRepo(root, tracesRepo, dry);
+    for (const { file, action } of results) {
+      process.stdout.write(`${action.padEnd(9)} ${file}\n`);
+    }
+    if (dry) process.stdout.write("dry run — nothing written.\n");
+    else {
+      process.stdout.write(
+        `\nInstalled gbird for ${tracesRepo}. Commit the files above.\n` +
+        "Codex users approve the repo hook once via /hooks; everyone else is automatic.\n",
+      );
+    }
     return;
   }
 
