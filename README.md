@@ -19,7 +19,9 @@ Three steps:
 2. **Gbird each repo you want captured.** Paste the install prompt to any coding agent working in that repo — get it from `GET /install?repo=yourorg/agent-traces` on a running `gbird serve` (or `?format=md` for raw markdown), or use [`hooks/INSTALL.md`](hooks/INSTALL.md). The agent writes hook configs for every harness — `.devin/hooks.v1.json` + `.devin/hooks.json` (Devin), `.claude/settings.json` (Claude Code), `.cursor/hooks.json` (Cursor) — commits them to the repo, checks `gh auth`, and self-tests a real push.
 3. **Done.** Anyone who opens that repo in a supported agent is captured automatically — the hook downloads itself to `~/.gbird/` on the first session event, records locally, and pushes the trace at session end under that person's own `gh` login.
 
-The only requirement on a teammate's machine: `gh` authenticated with write access to the traces repo. If the push fails, the trace stays in `~/.gbird/` — nothing breaks. Codex has no lifecycle hooks, so its sessions are backfilled by `gbird pull` instead.
+The only requirement on a teammate's machine: `gh` authenticated with write access to the traces repo. If the push fails, the trace stays in `~/.gbird/` — nothing breaks. Codex has lifecycle hooks too (`.codex/hooks.json`); the one-time `/hooks` trust approval is the only human step.
+
+**Opting out:** capture is always-on for every developer of a gbird'd repo. If a session must stay local, export `GBIRD_HOOKS=0` and every hook command exits before touching anything. There is no per-event opt-out — it is all or nothing, per environment.
 
 ## Onboarding alternatives
 
@@ -57,11 +59,11 @@ Store is plain files under `GBIRD_DIR` (default `~/.gbird`): `index.json` + `ses
 
 ## Backfill
 
-`gbird pull` covers sessions the hook never saw — Devin sessions via the v3 API (`DEVIN_API_KEY`/`DEVIN_ORG_ID`, `npm run secret:save`) and Codex rollouts from `~/.codex/sessions` (Codex has no lifecycle hooks). Incremental via `updated_at` / file hash; `--force` overrides.
+`gbird pull` covers sessions the hook never saw — Devin sessions via the v3 API (`DEVIN_API_KEY`/`DEVIN_ORG_ID`, `npm run secret:save`) and Codex rollouts from `~/.codex/sessions` as a fallback to the repo-scoped Codex hooks. Incremental via `updated_at` / file hash; `--force` overrides.
 
 ## Env
 
-Hook side: `GBIRD_REPO` (ship target repo), `GBIRD_REPO_BRANCH` (ship to a non-default branch), `GBIRD_ENDPOINT` + `GBIRD_TOKEN` (server ingest), `GBIRD_MEMBER` (identity override), `GBIRD_AGENT`, `GBIRD_DIR` — all settable in `~/.gbird/config.env`. Server side: `GBIRD_PORT`, `GBIRD_BASE_URL`, `GBIRD_ADMIN_TOKEN`.
+Hook side: `GBIRD_REPO` (ship target repo), `GBIRD_REPO_BRANCH` (ship to a non-default branch), `GBIRD_ENDPOINT` + `GBIRD_TOKEN` (server ingest), `GBIRD_MEMBER` (identity override), `GBIRD_AGENT`, `GBIRD_DIR`, `GBIRD_HOOKS=0` (disable capture entirely for that environment) — all settable in `~/.gbird/config.env`. Server side: `GBIRD_PORT`, `GBIRD_BASE_URL`, `GBIRD_ADMIN_TOKEN`.
 
 ## Development
 

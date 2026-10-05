@@ -24,10 +24,14 @@ export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   // curl is time-bounded so an unresponsive endpoint cannot stall the agent.
   const ensure =
     `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "${HOOK_VERSION_MARKER}" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL --connect-timeout 3 --max-time 15 ${HOOK_URL} -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; }`;
-  const record = (agent: string) => `${ensure} && GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record || true`;
+  // Always-on by default; a developer opts OUT with GBIRD_HOOKS=0 in their
+  // environment. Capture is a repo-level decision, but individuals keep an
+  // escape hatch when session contents must stay local.
+  const off = `[ "\${GBIRD_HOOKS:-1}" = "0" ] && exit 0; `;
+  const record = (agent: string) => `${off}${ensure} && GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record || true`;
   const bootstrap = record;
   const ship = (agent: string) =>
-    `${ensure} && GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship || true`;
+    `${off}${ensure} && GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship || true`;
   const devinEvent = (command: string) => ({ matcher: "", hooks: [{ type: "command", command }] });
 
   return {
