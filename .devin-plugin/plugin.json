@@ -1,5 +1,5 @@
 {
   "name": "gbird",
-  "version": "0.2.0",
-  "description": "Agent trace capture: lifecycle hooks record session events locally and ship the assembled trace to a git repo at SessionEnd."
+  "version": "0.3.0",
+  "description": "Agent trace capture: lifecycle hooks record session events locally and ship the assembled trace to a git repo on Stop/SessionEnd."
 }
