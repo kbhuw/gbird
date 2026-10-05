@@ -20,7 +20,7 @@ export interface RepoHookConfigs {
 
 const HOOK_VERSION_MARKER = "gbird-hook v4";
 const HOOK_URL =
-  "https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs";
+  "https://raw.githubusercontent.com/kbhuw/gbird/aca5189839b87b4333fa10e1b9e90baf95f2c642/hooks/gbird-hook.mjs";
 
 export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   // Every hook command re-verifies the runtime before running it: a failed

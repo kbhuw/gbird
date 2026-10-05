@@ -23,7 +23,7 @@ via their own `gh` credentials, under
    config with TRACES_REPO:
 
      mkdir -p ~/.gbird
-     curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs -o ~/.gbird/gbird-hook.mjs
+     curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/aca5189839b87b4333fa10e1b9e90baf95f2c642/hooks/gbird-hook.mjs -o ~/.gbird/gbird-hook.mjs
      curl -fsSL https://raw.githubusercontent.com/kbhuw/gbird/main/hooks/hooks.v1.json -o ~/.gbird/hooks.v1.json
      echo "GBIRD_REPO=<TRACES_REPO>" > ~/.gbird/config.env
 
