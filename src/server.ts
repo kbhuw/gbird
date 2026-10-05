@@ -199,7 +199,7 @@ function hooksConfig(baseUrl: string, token: string): unknown {
 }
 
 function repoInstallPrompt(tracesRepo: string): string {
-  const { devin, claude, cursor, codex } = repoHookConfigs(tracesRepo);
+  const { devin, devinConfig, claude, cursor, codex } = repoHookConfigs(tracesRepo);
 
   return `You are installing gbird trace capture ON THIS REPOSITORY.
 From now on, any coding agent that works on this repo will have its session
@@ -213,6 +213,10 @@ ${tracesRepo} via the developer's own gh credentials.
    If it fails, ask the human to run gh auth login, or stop.
 
 2. Write the hook config for every agent harness, in the repo root:
+
+   .devin/config.json  (requires the gbird plugin so CLOUD Devin sessions on
+   this repo load its hooks — merge "requiredPlugins" if the file exists):
+${devinConfig}
 
    .devin/hooks.v1.json  (Devin CLI):
 ${devin}
