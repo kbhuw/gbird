@@ -19,11 +19,19 @@ const HOOK_URL =
   "https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs";
 
 export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
-  const record = (agent: string) => `GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record`;
-  const bootstrap = (agent: string) =>
-    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "${HOOK_VERSION_MARKER}" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL ${HOOK_URL} -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; } && ${record(agent)} || true`;
+  // Every hook command re-verifies the runtime before running it: a failed
+  // SessionStart download must not wedge capture for the whole session, and the
+  // curl is time-bounded so an unresponsive endpoint cannot stall the agent.
+  const ensure =
+    `mkdir -p "$HOME/.gbird" && { ([ -f "$HOME/.gbird/gbird-hook.mjs" ] && grep -q "${HOOK_VERSION_MARKER}" "$HOME/.gbird/gbird-hook.mjs") || { t="$HOME/.gbird/gbird-hook.mjs.$$.tmp" && curl -fsSL --connect-timeout 3 --max-time 15 ${HOOK_URL} -o "$t" && mv -f "$t" "$HOME/.gbird/gbird-hook.mjs"; }; }`;
+  // Always-on by default; a developer opts OUT with GBIRD_HOOKS=0 in their
+  // environment. Capture is a repo-level decision, but individuals keep an
+  // escape hatch when session contents must stay local.
+  const off = `[ "\${GBIRD_HOOKS:-1}" = "0" ] && exit 0; `;
+  const record = (agent: string) => `${off}${ensure} && GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record || true`;
+  const bootstrap = record;
   const ship = (agent: string) =>
-    `GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship`;
+    `${off}${ensure} && GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship || true`;
   const devinEvent = (command: string) => ({ matcher: "", hooks: [{ type: "command", command }] });
 
   return {

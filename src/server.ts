@@ -243,6 +243,10 @@ ${codex}
 The hook is fail-open and never throws — it cannot break an agent session.
 Devin sessions running in the cloud don't load repo hooks; 'gbird pull'
 backfills them via the Devin API.
+
+Capture is always-on by design. A developer who must keep a session local
+opts out by exporting GBIRD_HOOKS=0 — every hook command then exits
+immediately and nothing is recorded or shipped.
 `;
 }
 
