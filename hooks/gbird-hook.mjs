@@ -1,4 +1,4 @@
-// gbird-hook v3
+// gbird-hook v4
 // gbird hook runtime — self-contained (no imports outside node builtins) so the
 // compiled single file can be copied onto any agent machine as gbird-hook.mjs.
 //
@@ -89,6 +89,31 @@ function sessionIdOf(payload) {
     }
     return "";
 }
+/**
+ * Deep-scrub credentials out of recorded payload data before it is stored.
+ * Hook payloads carry `tool_input.env` maps and command/output text that can
+ * contain live secrets — traces are only useful if they can't leak them.
+ * Credential-NAMED keys have their whole value replaced; string VALUES are
+ * scanned for known token shapes anywhere inside them.
+ */
+const SECRET_KEY = /secret|token|api[_-]?key|password|credential|bearer|authorization|cookie|signing|passphrase|private[_-]?key|access[_-]?key|session[_-]?key/i;
+const SECRET_VALUE = /(sk-[A-Za-z0-9_-]{16,}|vck_[A-Za-z0-9_-]{16,}|gh[psour]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|Bearer\s+[A-Za-z0-9._~+/=-]{16,}|eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,})/g;
+function redactSecrets(value, key) {
+    if (key !== undefined && SECRET_KEY.test(key))
+        return "[redacted]";
+    if (typeof value === "string")
+        return value.replace(SECRET_VALUE, "[redacted]");
+    if (Array.isArray(value))
+        return value.map((entry) => redactSecrets(entry));
+    if (value && typeof value === "object") {
+        const out = {};
+        for (const [entryKey, entryValue] of Object.entries(value)) {
+            out[entryKey] = redactSecrets(entryValue, entryKey);
+        }
+        return out;
+    }
+    return value;
+}
 /** Agent/model-identifying env vars; secret-looking values are replaced. */
 const ENV_PREFIX = /^(GBIRD|CLAUDE|CURSOR|DEVIN|ANTHROPIC|OPENAI|CODEX|WINDSURF|GEMINI|COPILOT)_/;
 const SECRETISH = /key|token|secret|password|credential|auth/i;
@@ -144,14 +169,14 @@ function toTimelineEvent(payload) {
                 type: "message_created",
                 title: "You",
                 status: null,
-                data: { ...shared, message: prompt, messageSource: "user" },
+                data: { ...shared, message: redactSecrets(prompt), messageSource: "user" },
             };
         }
         case "PreToolUse":
         case "PostToolUse": {
             const toolName = String(payload.tool_name ?? "tool");
-            const input = (payload.tool_input ?? {});
-            const response = (payload.tool_response ?? null);
+            const input = (redactSecrets(payload.tool_input ?? {}) ?? {});
+            const response = (redactSecrets(payload.tool_response ?? null) ?? null);
             const failed = eventName === "PostToolUse" && response?.success === false;
             const title = typeof input.command === "string" && input.command
                 ? `$ ${input.command.slice(0, 80)}`
@@ -172,7 +197,7 @@ function toTimelineEvent(payload) {
                 type: "permission_request",
                 title: `Permission: ${String(payload.tool_name ?? "tool")}`,
                 status: null,
-                data: { ...shared, toolName: payload.tool_name ?? null, toolInput: payload.tool_input ?? null },
+                data: { ...shared, toolName: payload.tool_name ?? null, toolInput: redactSecrets(payload.tool_input ?? null) },
             };
         case "Stop":
             return { ...base, id: stableId(sessionId, base.occurredAt, "stop"), type: "turn_stopped", title: "Turn stopped", status: null, data: shared };
@@ -188,7 +213,7 @@ function toTimelineEvent(payload) {
                 data: { ...shared, reason: payload.reason ?? null },
             };
         default:
-            return { ...base, id: stableId(sessionId, base.occurredAt, eventName), type: `hook_${eventName}`, title: eventName, status: null, data: { ...shared, payload } };
+            return { ...base, id: stableId(sessionId, base.occurredAt, eventName), type: `hook_${eventName}`, title: eventName, status: null, data: { ...shared, payload: redactSecrets(payload) } };
     }
 }
 function recordPayload(raw) {

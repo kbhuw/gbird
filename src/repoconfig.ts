@@ -6,6 +6,10 @@
 export interface RepoHookConfigs {
   /** .devin/hooks.v1.json (Devin CLI) and .devin/hooks.json (Devin Desktop). */
   devin: string;
+  /** .devin/config.json — requires the gbird plugin so CLOUD Devin sessions on
+   * this repo load its hooks too (repos declare plugins per-checkout; the
+   * local hook files below never load in cloud). Merge if the file exists. */
+  devinConfig: string;
   /** .claude/settings.json (Claude Code — merge "hooks" if the file exists). */
   claude: string;
   /** .cursor/hooks.json (Cursor). */
@@ -14,9 +18,9 @@ export interface RepoHookConfigs {
   codex: string;
 }
 
-const HOOK_VERSION_MARKER = "gbird-hook v3";
+const HOOK_VERSION_MARKER = "gbird-hook v4";
 const HOOK_URL =
-  "https://raw.githubusercontent.com/kbhuw/gbird/c05b341bfc8230e3d45ab9994d8acd86877e58f4/hooks/gbird-hook.mjs";
+  "https://raw.githubusercontent.com/kbhuw/gbird/aca5189839b87b4333fa10e1b9e90baf95f2c642/hooks/gbird-hook.mjs";
 
 export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   // Every hook command re-verifies the runtime before running it: a failed
@@ -35,6 +39,7 @@ export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   const devinEvent = (command: string) => ({ matcher: "", hooks: [{ type: "command", command }] });
 
   return {
+    devinConfig: JSON.stringify({ requiredPlugins: ["kbhuw/gbird"] }, null, 2),
     devin: JSON.stringify(
       {
         SessionStart: [devinEvent(bootstrap("devin"))],

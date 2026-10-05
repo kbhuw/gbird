@@ -16,7 +16,7 @@ session ends
 Three steps:
 
 1. **Create one private repo** to hold the traces (e.g. `yourorg/agent-traces`). That is the entire infrastructure.
-2. **Gbird each repo you want captured.** Paste the install prompt to any coding agent working in that repo — get it from `GET /install?repo=yourorg/agent-traces` on a running `gbird serve` (or `?format=md` for raw markdown), or use [`hooks/INSTALL.md`](hooks/INSTALL.md). The agent writes hook configs for every harness — `.devin/hooks.v1.json` + `.devin/hooks.json` (Devin), `.claude/settings.json` (Claude Code), `.cursor/hooks.json` (Cursor) — commits them to the repo, checks `gh auth`, and self-tests a real push.
+2. **Gbird each repo you want captured.** Paste the install prompt to any coding agent working in that repo — get it from `GET /install?repo=yourorg/agent-traces` on a running `gbird serve` (or `?format=md` for raw markdown), or use [`hooks/INSTALL.md`](hooks/INSTALL.md). The agent writes hook configs for every harness — `.devin/hooks.v1.json` + `.devin/hooks.json` + `.devin/config.json` (Devin — `config.json` requires the gbird plugin so **cloud** Devin sessions on the repo load its hooks too), `.claude/settings.json` (Claude Code), `.cursor/hooks.json` (Cursor), `.codex/hooks.json` (Codex) — commits them to the repo, checks `gh auth`, and self-tests a real push.
 3. **Done.** Anyone who opens that repo in a supported agent is captured automatically — the hook downloads itself to `~/.gbird/` on the first session event, records locally, and pushes the trace at session end under that person's own `gh` login.
 
 The only requirement on a teammate's machine: `gh` authenticated with write access to the traces repo. If the push fails, the trace stays in `~/.gbird/` — nothing breaks. Codex has lifecycle hooks too (`.codex/hooks.json`); the one-time `/hooks` trust approval is the only human step.
@@ -26,7 +26,7 @@ The only requirement on a teammate's machine: `gh` authenticated with write acce
 ## Onboarding alternatives
 
 - **Per-person, any harness** — [`hooks/INSTALL.md`](hooks/INSTALL.md) is a prompt, not a readme: a teammate hands it to their agent, which asks which repo to ship to (or `gh repo create`s one), downloads the hook, writes `GBIRD_REPO=<repo>` into `~/.gbird/config.env`, registers the config, and self-tests.
-- **Devin plugin** — this repo *is* a plugin (`.devin-plugin/plugin.json` + root `hooks.json`). Installing `https://github.com/kbhuw/gbird` in Devin CLI/Desktop registers the hooks for every local session on that machine; `~/.gbird/config.env` still provides the repo. Plugin hooks run in local (CLI/Desktop) sessions only, not cloud sessions.
+- **Devin plugin** — this repo *is* a plugin (`.devin-plugin/plugin.json` + root `hooks.json`). Installing `https://github.com/kbhuw/gbird` registers the hooks for every session the install scope covers — including **cloud sessions**, where `command` hooks fire on the session's machine for all events except `SessionStart`/`SessionEnd`. The plugin config ships on `Stop` as well as `SessionEnd`, so cloud sessions (which never fire `SessionEnd`) still push their trace every time the agent settles. `~/.gbird/config.env` still provides the repo.
 
 ## The hook
 
