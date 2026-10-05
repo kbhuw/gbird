@@ -212,16 +212,24 @@ ${tracesRepo} via the developer's own gh credentials.
 
    If it fails, ask the human to run gh auth login, or stop.
 
-2. Write the hook config for every agent harness, in the repo root:
+2. From the repo root, run the installer — it writes and merges every
+   hook config without clobbering existing hooks:
 
-   .devin/config.json  (requires the gbird plugin so CLOUD Devin sessions on
-   this repo load its hooks — merge "requiredPlugins" if the file exists):
+     npx -y github:kbhuw/gbird install ${tracesRepo}
+
+   Files it manages: .devin/config.json (requires the gbird plugin so CLOUD
+   Devin sessions on this repo load its hooks too), .devin/hooks.v1.json,
+   .devin/hooks.json, .claude/settings.json, .cursor/hooks.json,
+   .codex/hooks.json.
+
+   If npx is unavailable, write the files by hand instead (merge into any
+   existing files — do not clobber):
+
+   .devin/config.json:
 ${devinConfig}
 
-   .devin/hooks.v1.json  (Devin CLI):
+   .devin/hooks.v1.json  (Devin CLI — same content as .devin/hooks.json):
 ${devin}
-
-   .devin/hooks.json  (Devin Desktop — same content as hooks.v1.json)
 
    .claude/settings.json  (Claude Code — merge "hooks" if the file exists):
 ${claude}
@@ -245,8 +253,9 @@ ${codex}
    no write access — tell the human.
 
 The hook is fail-open and never throws — it cannot break an agent session.
-Devin sessions running in the cloud don't load repo hooks; 'gbird pull'
-backfills them via the Devin API.
+Cloud Devin sessions are covered too: .devin/config.json makes them load
+the gbird plugin's hooks, which ship on Stop (SessionEnd never fires in
+cloud). 'gbird pull' remains the backfill for hook-less sources.
 
 Capture is always-on by design. A developer who must keep a session local
 opts out by exporting GBIRD_HOOKS=0 — every hook command then exits
