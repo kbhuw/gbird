@@ -1,7 +1,6 @@
 {
   "name": "gbird",
   "version": "0.3.0",
-  "private": true,
   "type": "module",
   "bin": {
     "gbird": "dist/src/cli.js"
@@ -30,5 +29,23 @@
     "hooks.json",
     "AGENTS.md",
     ".devin-plugin"
-  ]
+  ],
+  "description": "Automatic agent-session trace capture: repo-committed hooks record sessions across Devin, Claude Code, Cursor and Codex, and ship the assembled trace to a git repo.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kbhuw/gbird.git"
+  },
+  "keywords": [
+    "agent",
+    "traces",
+    "devin",
+    "claude-code",
+    "cursor",
+    "codex",
+    "observability"
+  ],
+  "author": "Kush Bhuwalka",
+  "homepage": "https://github.com/kbhuw/gbird#readme",
+  "bugs": "https://github.com/kbhuw/gbird/issues"
 }
