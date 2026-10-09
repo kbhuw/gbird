@@ -3,6 +3,12 @@
 // files directly, so what the website instructs an agent to write is byte-for-
 // byte what the tool itself produces.
 
+/** Where a gbird'd repo's traces go. `repo` ships via each person's own gh
+ * login to a git repo; `endpoint`+`token` ships via HTTP POST to a running
+ * `gbird serve` (no per-person GitHub access needed). Pass a bare
+ * "owner/repo" string for the repo target. */
+export type ShipTarget = { repo: string } | { endpoint: string; token?: string };
+
 export interface RepoHookConfigs {
   /** .devin/hooks.v1.json (Devin CLI) and .devin/hooks.json (Devin Desktop). */
   devin: string;
@@ -22,7 +28,7 @@ const HOOK_VERSION_MARKER = "gbird-hook v4";
 const HOOK_URL =
   "https://raw.githubusercontent.com/kbhuw/gbird/aca5189839b87b4333fa10e1b9e90baf95f2c642/hooks/gbird-hook.mjs";
 
-export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
+export function repoHookConfigs(target: ShipTarget | string): RepoHookConfigs {
   // Every hook command re-verifies the runtime before running it: a failed
   // SessionStart download must not wedge capture for the whole session, and the
   // curl is time-bounded so an unresponsive endpoint cannot stall the agent.
@@ -34,8 +40,12 @@ export function repoHookConfigs(tracesRepo: string): RepoHookConfigs {
   const off = `[ "\${GBIRD_HOOKS:-1}" = "0" ] && exit 0; `;
   const record = (agent: string) => `${off}${ensure} && GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" record || true`;
   const bootstrap = record;
+  const shipEnv =
+    typeof target === "string" || "repo" in target
+      ? `GBIRD_REPO=${typeof target === "string" ? target : target.repo}`
+      : `GBIRD_ENDPOINT=${target.endpoint}${target.token ? ` GBIRD_TOKEN=${target.token}` : ""}`;
   const ship = (agent: string) =>
-    `${off}${ensure} && GBIRD_REPO=${tracesRepo} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship || true`;
+    `${off}${ensure} && ${shipEnv} GBIRD_AGENT=${agent} node "$HOME/.gbird/gbird-hook.mjs" ship || true`;
   const devinEvent = (command: string) => ({ matcher: "", hooks: [{ type: "command", command }] });
 
   return {

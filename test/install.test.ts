@@ -72,6 +72,22 @@ test("install merges into existing .claude/settings.json without clobbering othe
   assert.ok(sessionStart.includes("gbird-hook"));
 });
 
+test("endpoint target emits GBIRD_ENDPOINT/GBIRD_TOKEN instead of GBIRD_REPO", () => {
+  const root = tmpdir();
+  installIntoRepo(root, { endpoint: "https://traces.example.com:8780", token: "tok123" });
+  const devin = JSON.parse(fs.readFileSync(path.join(root, ".devin/hooks.v1.json"), "utf8"));
+  const text = JSON.stringify(devin);
+  assert.ok(text.includes("GBIRD_ENDPOINT=https://traces.example.com:8780"));
+  assert.ok(text.includes("GBIRD_TOKEN=tok123"));
+  assert.ok(!text.includes("GBIRD_REPO="));
+
+  const root2 = tmpdir();
+  installIntoRepo(root2, { endpoint: "https://traces.example.com" });
+  const text2 = JSON.stringify(JSON.parse(fs.readFileSync(path.join(root2, ".devin/hooks.v1.json"), "utf8")));
+  assert.ok(text2.includes("GBIRD_ENDPOINT="));
+  assert.ok(!text2.includes("GBIRD_TOKEN="), "no token key emitted when unset");
+});
+
 test("dry run reports actions without writing", () => {
   const root = tmpdir();
   const results = installIntoRepo(root, REPO, true);

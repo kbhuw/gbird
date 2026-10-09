@@ -4,7 +4,7 @@
 // upgrade path when the hook configs change.
 import fs from "node:fs";
 import path from "node:path";
-import { repoHookConfigs } from "./repoconfig.js";
+import { repoHookConfigs, type ShipTarget } from "./repoconfig.js";
 
 const GBIRD_MARK = /gbird/i;
 
@@ -60,8 +60,8 @@ export interface InstallResult {
   action: "created" | "merged" | "unchanged";
 }
 
-export function installIntoRepo(root: string, tracesRepo: string, dryRun = false): InstallResult[] {
-  const configs = repoHookConfigs(tracesRepo);
+export function installIntoRepo(root: string, target: ShipTarget | string, dryRun = false): InstallResult[] {
+  const configs = repoHookConfigs(target);
   const targets: Array<[string, string]> = [
     [".devin/hooks.v1.json", configs.devin],
     [".devin/hooks.json", configs.devin],
