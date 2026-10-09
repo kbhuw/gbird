@@ -23,9 +23,17 @@ Three steps:
    ```
 
    That writes and merges hook configs for every harness — `.devin/hooks.v1.json` + `.devin/hooks.json` + `.devin/config.json` (Devin — `config.json` requires the gbird plugin so **cloud** Devin sessions on the repo load its hooks too), `.claude/settings.json` (Claude Code), `.cursor/hooks.json` (Cursor), `.codex/hooks.json` (Codex) — without clobbering existing hooks; re-run it to pick up config changes. No `npx`, or you'd rather have an agent do it (it also checks `gh auth` and self-tests a real push): paste the install prompt from `GET /install?repo=yourorg/agent-traces` on a running `gbird serve` (or `?format=md`), or use [`hooks/INSTALL.md`](hooks/INSTALL.md).
-3. **Done.** Anyone who opens that repo in a supported agent is captured automatically — the hook downloads itself to `~/.gbird/` on the first session event, records locally, and pushes the trace at session end under that person's own `gh` login.
 
-The only requirement on a teammate's machine: `gh` authenticated with write access to the traces repo. If the push fails, the trace stays in `~/.gbird/` — nothing breaks. Codex has lifecycle hooks too (`.codex/hooks.json`); the one-time `/hooks` trust approval is the only human step.
+   **Ship target is abstract.** `gbird install owner/repo` sends traces to a git repo via each dev's own `gh`. Alternatively point everyone at a `gbird serve` machine:
+
+   ```bash
+   npx -y github:kbhuw/gbird install --to https://traces.example.com:8780 --token <member-token>
+   ```
+
+   The same six configs then carry `GBIRD_ENDPOINT`(+`GBIRD_TOKEN`) and the hook POSTs traces over HTTP — no `gh` or repo write access needed per person (one shared member token, or per-person tokens in `~/.gbird/config.env`).
+3. **Done.** Anyone who opens that repo in a supported agent is captured automatically — the hook downloads itself to `~/.gbird/` on the first session event, records locally, and pushes the trace at session end (via their own `gh`, or to the endpoint).
+
+The only requirement on a teammate's machine: `gh` authenticated with write access to the traces repo (repo target) or the member token (endpoint target). If the push fails, the trace stays in `~/.gbird/` — nothing breaks. Codex has lifecycle hooks too (`.codex/hooks.json`); the one-time `/hooks` trust approval is the only human step.
 
 **Opting out:** capture is always-on for every developer of a gbird'd repo. If a session must stay local, export `GBIRD_HOOKS=0` and every hook command exits before touching anything. There is no per-event opt-out — it is all or nothing, per environment.
 

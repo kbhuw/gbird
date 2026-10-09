@@ -217,6 +217,9 @@ ${tracesRepo} via the developer's own gh credentials.
 
      npx -y github:kbhuw/gbird install ${tracesRepo}
 
+   (Or, to ship traces to a running gbird-serve machine instead of a git
+   repo: npx -y github:kbhuw/gbird install --to https://<host>:<port> --token <member-token>)
+
    Files it manages: .devin/config.json (requires the gbird plugin so CLOUD
    Devin sessions on this repo load its hooks too), .devin/hooks.v1.json,
    .devin/hooks.json, .claude/settings.json, .cursor/hooks.json,

@@ -8,6 +8,7 @@ import { syncCodexTimeline } from "./codex.js";
 import { DevinClient } from "./devin.js";
 import { GitHubClient } from "./github.js";
 import type { AgentKind } from "./schema.js";
+import type { ShipTarget } from "./repoconfig.js";
 import { syncTimeline } from "./sync.js";
 import { TraceStore } from "./tracestore.js";
 
@@ -76,7 +77,11 @@ Commands:
     --repo owner/repo      Filter by repository
     --query text           Filter by title
     --json                 Machine-readable output
-  install <traces-repo> Write gbird's hook configs into a repo (run inside it)
+  install <target>      Write gbird's hook configs into a repo (run inside it)
+                         target: owner/repo (ship via each dev's own gh) or
+                         https://host:port (ship to a gbird-serve endpoint)
+    --to TARGET            Same as positional target
+    --token T              Member token for an endpoint target (gbird invite)
     --root DIR             Target repo root (default: cwd)
     --dry-run              Report what would change without writing
   show <session-id>     Print one stored trace (session + events)
@@ -233,12 +238,36 @@ async function main(): Promise<void> {
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
       if (arg === undefined) continue;
-      if (arg === "--root" || arg === "--traces-repo") i++;
+      if (arg === "--root" || arg === "--traces-repo" || arg === "--to" || arg === "--token") i++;
       else if (!arg.startsWith("-") && positional === undefined) positional = arg;
     }
-    const tracesRepo = option("--traces-repo") ?? positional ?? process.env.GBIRD_REPO;
-    if (!tracesRepo) {
-      throw new Error("Pass the traces repo: gbird install <owner/repo>.");
+    const rawTarget = option("--to") ?? option("--traces-repo") ?? positional ?? process.env.GBIRD_REPO;
+    const token = option("--token");
+    if (!rawTarget) {
+      throw new Error("Pass the ship target: gbird install <owner/repo> or gbird install --to https://host:port --token T.");
+    }
+    let target: ShipTarget;
+    let targetLabel: string;
+    if (/^https?:\/\//.test(rawTarget)) {
+      const endpoint = rawTarget.replace(/\/+$/, "");
+      target = token ? { endpoint, token } : { endpoint };
+      targetLabel = endpoint;
+      if (!token) {
+        process.stderr.write(
+          "note: no --token — shipping to a `gbird serve` endpoint needs a member token\n" +
+          "      (run `gbird invite <name>` on the server, then re-install with --token).\n",
+        );
+      } else {
+        process.stderr.write(
+          "note: --token lands in the committed hook configs — every reader of this repo\n" +
+          "      can post traces as that member. Prefer per-person GBIRD_TOKEN in\n" +
+          "      ~/.gbird/config.env for a public repo.\n",
+        );
+      }
+    } else {
+      if (token) throw new Error("--token only applies to an endpoint target (https://...).");
+      target = { repo: rawTarget };
+      targetLabel = rawTarget;
     }
     const root = path.resolve(option("--root") ?? ".");
     if (!fs.existsSync(path.join(root, ".git"))) {
@@ -246,14 +275,14 @@ async function main(): Promise<void> {
     }
     const { installIntoRepo } = await import("./install.js");
     const dry = hasFlag("--dry-run");
-    const results = installIntoRepo(root, tracesRepo, dry);
+    const results = installIntoRepo(root, target, dry);
     for (const { file, action } of results) {
       process.stdout.write(`${action.padEnd(9)} ${file}\n`);
     }
     if (dry) process.stdout.write("dry run — nothing written.\n");
     else {
       process.stdout.write(
-        `\nInstalled gbird for ${tracesRepo}. Commit the files above.\n` +
+        `\nInstalled gbird for ${targetLabel}. Commit the files above.\n` +
         "Codex users approve the repo hook once via /hooks; everyone else is automatic.\n",
       );
     }
