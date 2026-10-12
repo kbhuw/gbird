@@ -75,6 +75,13 @@ Store is plain files under `GBIRD_DIR` (default `~/.gbird`): `index.json` + `ses
 
 `gbird pull` covers sessions the hook never saw — Devin sessions via the v3 API (`DEVIN_API_KEY`/`DEVIN_ORG_ID`, `npm run secret:save`) and Codex rollouts from `~/.codex/sessions` as a fallback to the repo-scoped Codex hooks. Incremental via `updated_at` / file hash; `--force` overrides.
 
+`gbird push <owner/repo>` ships the pulled store (or any dir of session files) into a traces repo over plain `git` — no `gh api` needed, so it works on machines whose GitHub credential can't call the REST API but can push (e.g. Devin cloud VMs authenticate through `git-manager.devin.ai`). It clones via the first reachable remote (GBIRD_GIT_URL → git-manager proxy → github.com https → ssh), copies `--dir` into `--dest` (default `sessions/`), commits only if anything changed, and pushes. `--workdir <existing-clone>` pushes in place instead of cloning.
+
+```bash
+gbird pull --source devin
+gbird push DevelopIQ-ai/puffle-traces          # ships ~/.gbird/sessions/
+```
+
 ## Env
 
 Hook side: `GBIRD_REPO` (ship target repo), `GBIRD_REPO_BRANCH` (ship to a non-default branch), `GBIRD_ENDPOINT` + `GBIRD_TOKEN` (server ingest), `GBIRD_MEMBER` (identity override), `GBIRD_AGENT`, `GBIRD_DIR`, `GBIRD_HOOKS=0` (disable capture entirely for that environment) — all settable in `~/.gbird/config.env`. Server side: `GBIRD_PORT`, `GBIRD_BASE_URL`, `GBIRD_ADMIN_TOKEN`.
