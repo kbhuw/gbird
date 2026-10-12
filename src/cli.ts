@@ -85,6 +85,11 @@ Commands:
     --root DIR             Target repo root (default: cwd)
     --dry-run              Report what would change without writing
   show <session-id>     Print one stored trace (session + events)
+  push <owner/repo>     Copy session files from --dir into the traces repo and git-push
+    --dir DIR              Source dir (default: the store's sessions/)
+    --dest SUBDIR          Repo subdir (default: sessions)
+    --workdir PATH         Existing checkout to push from instead of cloning
+    --message MSG          Commit message
   hook <sub>            Hook runtime: record | collect [id] | ship [id] (see hooks/)
   serve                 Run the trace server (UI + ingest API)
     --port N               Port (default 8780 or GBIRD_PORT)
@@ -190,10 +195,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  const store = new TraceStore(storeDir());
+  // Constructed lazily: commands that don't use the store (push, install, hook)
+  // must not create index.json inside a --dir they are only reading.
+  let store: TraceStore | undefined;
+  const getStore = () => (store ??= new TraceStore(storeDir()));
 
   if (command === "pull") {
-    await pull(store);
+    await pull(getStore());
     return;
   }
 
@@ -207,11 +215,11 @@ async function main(): Promise<void> {
     const port = Number(option("--port") ?? process.env.GBIRD_PORT ?? 8780);
     const { createGbirdServer } = await import("./server.js");
     const server = createGbirdServer({
-      dir: store.dir,
+      dir: getStore().dir,
       baseUrl: option("--base-url") ?? process.env.GBIRD_BASE_URL,
     });
     server.listen(port, () => {
-      process.stdout.write(`gbird listening on http://localhost:${port}\nstore: ${store.dir}\n`);
+      process.stdout.write(`gbird listening on http://localhost:${port}\nstore: ${getStore().dir}\n`);
       if (!process.env.GBIRD_ADMIN_TOKEN) {
         process.stderr.write("note: GBIRD_ADMIN_TOKEN unset — POST /api/members disabled (use gbird invite)\n");
       }
@@ -223,7 +231,7 @@ async function main(): Promise<void> {
     const name = process.argv[3];
     if (!name) throw new Error("Pass a member name: gbird invite <name>.");
     const { mintMember } = await import("./members.js");
-    const member = mintMember(store.dir, name);
+    const member = mintMember(getStore().dir, name);
     const baseUrl = option("--base-url") ?? process.env.GBIRD_BASE_URL ?? `http://localhost:${process.env.GBIRD_PORT ?? 8780}`;
     process.stdout.write(
       `${member.name}\n  token:   ${member.token}\n  install: ${baseUrl}/install/${member.token}\n` +
@@ -289,22 +297,42 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "push") {
+    const repo = process.argv[3] ?? option("--repo") ?? process.env.GBIRD_REPO;
+    if (!repo || repo.startsWith("-")) {
+      throw new Error("Pass the traces repo: gbird push <owner/repo>.");
+    }
+    const { pushDirToRepo } = await import("./push.js");
+    const result = pushDirToRepo({
+      repo,
+      dir: option("--dir") ?? path.join(getStore().dir, "sessions"),
+      dest: option("--dest"),
+      workdir: option("--workdir"),
+      message: option("--message"),
+    });
+    process.stdout.write(
+      `${result.files} file${result.files === 1 ? "" : "s"} → ${result.remote}\n` +
+      (result.committed ? "committed + pushed\n" : "nothing new — repo already up to date\n"),
+    );
+    return;
+  }
+
   if (command === "list") {
-    list(store);
+    list(getStore());
     return;
   }
 
   if (command === "show") {
     const id = process.argv[3];
     if (!id) throw new Error("Pass a session id: gbird show <session-id>.");
-    const timeline = store.getTimeline(id);
+    const timeline = getStore().getTimeline(id);
     if (!timeline) throw new Error(`No stored session ${id}.`);
     process.stdout.write(`${JSON.stringify(timeline, null, 2)}\n`);
     return;
   }
 
   if (command === "path") {
-    process.stdout.write(`${store.dir}\n`);
+    process.stdout.write(`${getStore().dir}\n`);
     return;
   }
 
